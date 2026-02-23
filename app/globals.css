@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Premium Gelap default */
+:root{
+  --bg: 10 10 10;
+  --surface: 20 20 20;
+  --border: 45 45 45;
+  --text: 245 245 245;
+  --muted: 190 190 190;
+  --brand: 255 255 255;
+  --brandText: 10 10 10;
+}
+
+/* Bright Minimal */
+.light{
+  --bg: 250 250 250;
+  --surface: 255 255 255;
+  --border: 220 220 220;
+  --text: 20 20 20;
+  --muted: 90 90 90;
+  --brand: 20 20 20;
+  --brandText: 255 255 255;
+}
+
+html,body{height:100%}
+body{background:rgb(var(--bg));color:rgb(var(--text))}
