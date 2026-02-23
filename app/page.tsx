@@ -59,11 +59,7 @@ export default function HomePage() {
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
-                <a
-                  href="/menu"
-                  className="rounded-2xl px-5 py-3 text-sm font-semibold hover:opacity-90"
-                  style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
-                >
+                <a href="/menu" className="btn-primary rounded-2xl px-5 py-3 text-sm font-semibold">
                   Lihat Menu
                 </a>
 
@@ -71,28 +67,20 @@ export default function HomePage() {
                   href={SITE.gofood}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
-                  style={{ borderColor: "rgba(255,255,255,0.25)" }}
+                  className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold"
                 >
                   Pesan via GoFood
                 </a>
 
-                <a
-                  href="/kasir"
-                  className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
-                  style={{ borderColor: "rgba(255,255,255,0.25)" }}
-                >
+                <a href="/kasir" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold">
                   Dashboard Kasir
                 </a>
 
-                <a
-                  href="/admin"
-                  className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
-                  style={{ borderColor: "rgba(255,255,255,0.25)" }}
-                >
+                <a href="/admin" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold">
                   Dashboard Admin
                 </a>
               </div>
+
 
               {/* Highlight */}
               <div className="mt-10 grid gap-4 md:grid-cols-3">
