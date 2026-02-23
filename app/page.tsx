@@ -9,12 +9,12 @@ const bestSellers = [
 ];
 
 const gallery = [
-  "/gallery/1.webp",
-  "/gallery/2.webp",
-  "/gallery/3.webp",
-  "/gallery/4.webp",
-  "/gallery/5.webp",
-  "/gallery/6.webp",
+  "./gallery/1.webp",
+  "./gallery/2.webp",
+  "./gallery/3.webp",
+  "./gallery/4.webp",
+  "./gallery/5.webp",
+  "./gallery/6.webp",
 ];
 
 export default function HomePage() {
@@ -26,60 +26,85 @@ export default function HomePage() {
       {/* HERO */}
       <section className="mx-auto max-w-6xl px-5 py-14">
         <div
-          className="rounded-32px border p-10 md:p-14"
-          style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--surface))" }}
+          className="relative overflow-hidden rounded-[32px] border"
+          style={{ borderColor: "rgb(var(--border))" }}
         >
-          <div className="max-w-2xl">
-            <h1 className="text-4xl font-bold md:text-5xl">{SITE.brand}</h1>
-            <p className="mt-3 text-base md:text-lg" style={{ color: "rgb(var(--muted))" }}>
-              Kopi, non-coffee, dan tempat nyaman untuk ngobrol. Outlet: {SITE.outlet}.
-            </p>
+          {/* Background image */}
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: "url(/hero.webp)",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              transform: "scale(1.03)",
+              filter: "saturate(1.05) contrast(1.05)",
+            }}
+          />
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a
-                href="/menu"
-                className="rounded-2xl px-5 py-3 text-sm font-semibold hover:opacity-90"
-                style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
-              >
-                Lihat Menu
-              </a>
+          {/* Overlay gelap biar teks kebaca */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(90deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.30) 100%)",
+            }}
+          />
 
-              <a
-                href={SITE.gofood}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
-                style={{ borderColor: "rgb(var(--border))" }}
-              >
-                Pesan via GoFood
-              </a>
+          {/* Content */}
+          <div className="relative p-10 md:p-14">
+            <div className="max-w-2xl">
+              <h1 className="text-4xl font-bold md:text-5xl">{SITE.brand}</h1>
+              <p className="mt-3 text-base md:text-lg" style={{ color: "rgb(var(--muted))" }}>
+                Kopi, non-coffee, dan tempat nyaman untuk ngobrol. Outlet: {SITE.outlet}.
+              </p>
 
-              <a
-                href="/kasir"
-                className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
-                style={{ borderColor: "rgb(var(--border))" }}
-              >
-                Dashboard Kasir
-              </a>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <a
+                  href="/menu"
+                  className="rounded-2xl px-5 py-3 text-sm font-semibold hover:opacity-90"
+                  style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
+                >
+                  Lihat Menu
+                </a>
 
-              <a
-                href="/admin"
-                className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
-                style={{ borderColor: "rgb(var(--border))" }}
-              >
-                Dashboard Admin
-              </a>
-            </div>
+                <a
+                  href={SITE.gofood}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
+                  style={{ borderColor: "rgba(255,255,255,0.25)" }}
+                >
+                  Pesan via GoFood
+                </a>
 
-            {/* Highlight */}
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-              <Highlight title="Cozy & Minimal" desc="Indoor & outdoor, cocok kerja ringan." />
-              <Highlight title="Best Seller" desc="Kopi Untukmu 2.0 Bold jadi favorit." />
-              <Highlight title="Order Cepat" desc="Klik menu → isi data → kasir proses." />
+                <a
+                  href="/kasir"
+                  className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
+                  style={{ borderColor: "rgba(255,255,255,0.25)" }}
+                >
+                  Dashboard Kasir
+                </a>
+
+                <a
+                  href="/admin"
+                  className="rounded-2xl border px-5 py-3 text-sm font-semibold hover:opacity-90"
+                  style={{ borderColor: "rgba(255,255,255,0.25)" }}
+                >
+                  Dashboard Admin
+                </a>
+              </div>
+
+              {/* Highlight */}
+              <div className="mt-10 grid gap-4 md:grid-cols-3">
+                <Highlight title="Cozy & Minimal" desc="Indoor & outdoor, cocok kerja ringan." />
+                <Highlight title="Best Seller" desc="Kopi Untukmu 2.0 Bold jadi favorit." />
+                <Highlight title="Order Cepat" desc="Klik menu → isi data → kasir proses." />
+              </div>
             </div>
           </div>
         </div>
       </section>
+
 
       {/* BEST SELLER */}
       <section className="mx-auto max-w-6xl px-5 pb-12">
