@@ -1,8 +1,9 @@
 "use client";
 
-import Navbar from "../components/Navbar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../components/AuthGate";
+import Navbar from "../components/Navbar";
+import ThemeLock from "../components/ThemeLock";
 import { supabase } from "../lib/supabaseClient";
 import {
   CartesianGrid,
@@ -71,11 +72,16 @@ function fmtDay(d: Date) {
 }
 
 function badgeStatus(status: Status) {
-  if (status === "MENUNGGU")
+  if (status === "MENUNGGU") {
     return { text: "MENUNGGU KONFIRMASI", bg: "#FFF7ED", fg: "#C2410C", bd: "#FED7AA" };
-  if (status === "DITERIMA")
+  }
+  if (status === "DITERIMA") {
     return { text: "SEDANG DIPROSES", bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE" };
-  return { text: "SUDAH SIAP", bg: "#ECFDF5", fg: "#15803D", bd: "#BBF7D0" };
+  }
+  if (status === "SELESAI") {
+    return { text: "SUDAH SIAP", bg: "#ECFDF5", fg: "#15803D", bd: "#BBF7D0" };
+  }
+  return { text: "BATAL", bg: "#FEF2F2", fg: "#B91C1C", bd: "#FECACA" };
 }
 
 /* =========================
@@ -112,13 +118,9 @@ export default function KasirPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUnlockedRef = useRef(false);
 
-  // realtime/anti-double
-  const lastStatusByIdRef = useRef<Record<string, Status>>({});
+  // anti double beep
   const lastBeepAtRef = useRef(0);
-
-  // fallback polling (optional)
-  const prevMenungguCountRef = useRef<number>(0);
-  const hasInitCountRef = useRef(false);
+  const lastStatusByIdRef = useRef<Record<string, Status>>({});
 
   /* ---------- Audio init ---------- */
   useEffect(() => {
@@ -127,60 +129,82 @@ export default function KasirPage() {
     audioRef.current = a;
   }, []);
 
-async function unlockAudio() {
-  const a = audioRef.current;
-  if (!a) return;
-
-  a.volume = 0;
-  a.currentTime = 0;
-  await a.play();
-  a.pause();
-  a.currentTime = 0;
-  a.volume = 1;
-
-  audioUnlockedRef.current = true;
-  console.log("✅ Audio unlocked");
-}
-
-async function loadChart() {
-  try {
-    const now = new Date();
-    const map = new Map<string, SeriesPoint>();
-
-    if (range === "today") {
-      const d = startOfDay(now);
-      map.set(d.toISOString(), { label: fmtDay(d), orders: 0, revenue: 0 });
-    } else if (range === "week") {
-      for (let i = 6; i >= 0; i--) {
-        const d = startOfDay(addDays(now, -i));
-        map.set(d.toISOString(), { label: fmtDay(d), orders: 0, revenue: 0 });
-      }
-    } else {
-      const y = now.getFullYear();
-      const m = now.getMonth();
-      for (let i = 0; i < 12; i++) {
-        const d = new Date(y, i, 1);
-        const label = String(i + 1).padStart(2, "0");
-        map.set(d.toISOString(), { label, orders: 0, revenue: 0 });
-      }
-    }
-
-    const { data, error } = await supabase.from("orders").select("created_at,total").eq("status", "SELESAI");
-    if (error) return console.error("loadChart error:", error);
-
-    for (const o of (data ?? []) as any[]) {
-      const key = fmtDay(new Date(o.created_at));
-      const b = map.get(key);
-      if (!b) continue;
-      b.orders += 1;
-      b.revenue += o.total ?? 0;
-    }
-
-    setSeries([...map.entries()].map(([, v]) => v));
-  } catch (e) {
-    console.error("loadChart error:", e);
+  function shouldBeepNow() {
+    const now = Date.now();
+    if (now - lastBeepAtRef.current < 1200) return false;
+    lastBeepAtRef.current = now;
+    return true;
   }
-}
+
+  async function unlockAudio() {
+    const a = audioRef.current;
+    if (!a) return;
+
+    a.volume = 0;
+    a.currentTime = 0;
+    await a.play();
+    a.pause();
+    a.currentTime = 0;
+    a.volume = 1;
+
+    audioUnlockedRef.current = true;
+  }
+
+  async function enableSound() {
+    if (soundEnabledRef.current) return;
+    setSoundEnabled(true);
+    try {
+      await unlockAudio();
+    } catch {
+      alert("Browser masih memblokir autoplay. Klik Enable Sound sekali lagi.");
+    }
+  }
+
+  async function playNotif() {
+    const a = audioRef.current;
+    if (!a) return;
+    if (!soundEnabledRef.current) return;
+    if (!audioUnlockedRef.current) return;
+
+    try {
+      a.currentTime = 0;
+      await a.play();
+    } catch {
+      // ignore
+    }
+  }
+
+  /* ---------- Loaders ---------- */
+  async function loadCounts() {
+    const { data, error } = await supabase.from("orders").select("status");
+    if (error) return console.error("loadCounts error:", error);
+
+    const rows = (data ?? []) as Array<{ status: Status }>;
+    setCountMenunggu(rows.filter((r) => r.status === "MENUNGGU").length);
+    setCountDiterima(rows.filter((r) => r.status === "DITERIMA").length);
+    setCountSelesai(rows.filter((r) => r.status === "SELESAI").length);
+  }
+
+  async function loadQueueToday() {
+    const now = new Date();
+    const start = startOfDay(now);
+    const end = addDays(start, 1);
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, created_at")
+      .gte("created_at", start.toISOString())
+      .lt("created_at", end.toISOString())
+      .order("created_at", { ascending: true });
+
+    if (error) return console.error("loadQueueToday error:", error);
+
+    const map: Record<string, number> = {};
+    (data ?? []).forEach((o: any, idx: number) => {
+      map[o.id] = idx + 1;
+    });
+    setQueueMap(map);
+  }
 
   async function loadOrders() {
     setLoadingOrders(true);
@@ -202,6 +226,77 @@ async function loadChart() {
     }
   }
 
+  async function loadChart() {
+    const now = new Date();
+    const r = rangeRef.current;
+
+    // TODAY: per jam
+    if (r === "today") {
+      const start = startOfDay(now);
+      const end = addDays(start, 1);
+
+      const { data, error } = await supabase
+        .from("orders")
+        .select("created_at,total")
+        .gte("created_at", start.toISOString())
+        .lt("created_at", end.toISOString());
+
+      if (error) return console.error("loadChart(today) error:", error);
+
+      const buckets = new Map<number, { orders: number; revenue: number }>();
+      for (let h = 0; h < 24; h++) buckets.set(h, { orders: 0, revenue: 0 });
+
+      for (const o of (data ?? []) as any[]) {
+        const d = new Date(o.created_at);
+        const h = d.getHours();
+        const b = buckets.get(h)!;
+        b.orders += 1;
+        b.revenue += o.total ?? 0;
+      }
+
+      setSeries(
+        Array.from({ length: 24 }, (_, h) => ({
+          label: `${String(h).padStart(2, "0")}:00`,
+          orders: buckets.get(h)!.orders,
+          revenue: buckets.get(h)!.revenue,
+        }))
+      );
+      return;
+    }
+
+    // WEEK/MONTH: per hari
+    const days = r === "week" ? 7 : 30;
+    const end = startOfDay(addDays(now, 1));
+    const start = startOfDay(addDays(now, -(days - 1)));
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("created_at,total")
+      .gte("created_at", start.toISOString())
+      .lt("created_at", end.toISOString());
+
+    if (error) return console.error("loadChart(days) error:", error);
+
+    const map = new Map<string, { orders: number; revenue: number }>();
+    for (let i = 0; i < days; i++) map.set(fmtDay(addDays(start, i)), { orders: 0, revenue: 0 });
+
+    for (const o of (data ?? []) as any[]) {
+      const key = fmtDay(new Date(o.created_at));
+      const b = map.get(key);
+      if (!b) continue;
+      b.orders += 1;
+      b.revenue += o.total ?? 0;
+    }
+
+    setSeries(
+      [...map.entries()].map(([date, v]) => ({
+        label: date.slice(5),
+        orders: v.orders,
+        revenue: v.revenue,
+      }))
+    );
+  }
+
   async function refreshAll() {
     await Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
   }
@@ -215,20 +310,17 @@ async function loadChart() {
         if (!alive) return;
         await fn();
       } catch (e) {
-        console.log("❌ handler error:", e);
+        console.log("handler error:", e);
       }
     };
 
-    const refreshAllLocal = () =>
-      Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
+    const refreshAllLocal = () => Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
 
     // initial load
     safe(refreshAllLocal);
 
     const channel = supabase
       .channel("kasir-orders-realtime")
-
-      // ✅ customer baru pesan (INSERT)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, (payload) => {
         const row = payload.new as any;
         const id = row?.id as string | undefined;
@@ -236,14 +328,12 @@ async function loadChart() {
 
         if (id && st) lastStatusByIdRef.current[id] = st;
 
-        if (st === "MENUNGGU") {
-          if (shouldBeepNow()) safe(playNotif);
+        if (st === "MENUNGGU" && shouldBeepNow()) {
+          safe(playNotif);
         }
 
         safe(refreshAllLocal);
       })
-
-      // ✅ status berubah (UPDATE)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (payload) => {
         const row = payload.new as any;
         const id = row?.id as string | undefined;
@@ -254,31 +344,26 @@ async function loadChart() {
         const prevStatus = lastStatusByIdRef.current[id];
         lastStatusByIdRef.current[id] = nextStatus;
 
-        // kalau belum pernah lihat id ini, skip bunyi biar nggak random
         if (!prevStatus) return void safe(refreshAllLocal);
 
         const changed = prevStatus !== nextStatus;
-
         const shouldBeep =
           changed &&
-          ((prevStatus === "MENUNGGU" && nextStatus === "DITERIMA") || // mulai masak
-            (prevStatus === "MENUNGGU" && nextStatus === "BATAL") || // batalkan
-            (prevStatus === "DITERIMA" && nextStatus === "SELESAI")); // selesai (opsional)
+          ((prevStatus === "MENUNGGU" && nextStatus === "DITERIMA") ||
+            (prevStatus === "MENUNGGU" && nextStatus === "BATAL") ||
+            (prevStatus === "DITERIMA" && nextStatus === "SELESAI"));
 
-        if (shouldBeep) {
-          if (shouldBeepNow()) safe(playNotif);
+        if (shouldBeep && shouldBeepNow()) {
+          safe(playNotif);
         }
 
         safe(refreshAllLocal);
       })
-
-      // item berubah
       .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
         safe(loadOrders);
       })
-      .subscribe((status) => console.log("✅ Realtime status:", status));
+      .subscribe();
 
-    // fallback polling kalau websocket putus
     const timer = setInterval(() => safe(refreshAllLocal), 4000);
 
     return () => {
@@ -289,18 +374,18 @@ async function loadChart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // kalau user ganti range / status: refresh tanpa resubscribe
+  // refresh when range/status change (no resubscribe)
   useEffect(() => {
     refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, activeStatus]);
 
-async function logout() {
-  await supabase.auth.signOut();
-  location.href = "/";
-}
+  async function logout() {
+    await supabase.auth.signOut();
+    location.href = "/";
+  }
 
-async function updateStatus(orderId: string, status: Status) {
+  async function updateStatus(orderId: string, status: Status) {
     const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
     if (error) return alert(error.message);
     await refreshAll();
@@ -315,59 +400,6 @@ async function updateStatus(orderId: string, status: Status) {
     await refreshAll();
   }
 
-  function shouldBeepNow() {
-    const now = Date.now();
-    if (now - lastBeepAtRef.current < 2000) return false;
-    lastBeepAtRef.current = now;
-    return true;
-  }
-
-  async function playNotif() {
-    const a = audioRef.current;
-    if (!a || !soundEnabledRef.current) return;
-    a.currentTime = 0;
-    await a.play().catch(() => {});
-  }
-
-  async function enableSound() {
-    if (soundEnabled) return;
-    setSoundEnabled(true);
-    await unlockAudio();
-  }
-
-  async function loadCounts() {
-    try {
-      const { data: d1 } = await supabase.from("orders").select("id", { count: "exact" }).eq("status", "MENUNGGU");
-      const { data: d2 } = await supabase.from("orders").select("id", { count: "exact" }).eq("status", "DITERIMA");
-      const { data: d3 } = await supabase.from("orders").select("id", { count: "exact" }).eq("status", "SELESAI");
-      setCountMenunggu(d1?.length ?? 0);
-      setCountDiterima(d2?.length ?? 0);
-      setCountSelesai(d3?.length ?? 0);
-    } catch (e) {
-      console.error("loadCounts error:", e);
-    }
-  }
-
-  async function loadQueueToday() {
-    try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id")
-        .gte("created_at", startOfDay(new Date()).toISOString())
-        .eq("status", "SELESAI")
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      const map: Record<string, number> = {};
-      (data ?? []).forEach((row: any, idx: number) => {
-        map[row.id] = idx + 1;
-      });
-      setQueueMap(map);
-    } catch (e) {
-      console.error("loadQueueToday error:", e);
-    }
-  }
-
   const headerLabel = useMemo(() => {
     if (range === "today") return "Hari ini";
     if (range === "week") return "Mingguan";
@@ -376,18 +408,16 @@ async function updateStatus(orderId: string, status: Status) {
 
   return (
     <AuthGate allow={["admin", "cashier"]} nextPath="/kasir">
+      <ThemeLock mode="light" />
       <main className="min-h-screen">
-        {/* ✅ Navbar global: klik brand balik ke Home */}
-        <Navbar />
+        <Navbar hideThemeToggle />
 
         <div className="mx-auto max-w-6xl px-5 py-6">
-          {/* Action bar (kasir) */}
+          {/* Action bar */}
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={enableSound}
               className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              style={{ borderColor: "rgb(var(--border))" }}
-              title="Klik sekali agar notifikasi audio diizinkan browser"
             >
               {soundEnabled ? "Sound: ON" : "Enable Sound"}
             </button>
@@ -398,10 +428,9 @@ async function updateStatus(orderId: string, status: Status) {
                   if (!soundEnabledRef.current) setSoundEnabled(true);
                   if (!audioUnlockedRef.current) await unlockAudio();
                   await playNotif();
-                } catch {}
+                } catch { }
               }}
               className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              style={{ borderColor: "rgb(var(--border))" }}
             >
               Test Sound
             </button>
@@ -409,7 +438,6 @@ async function updateStatus(orderId: string, status: Status) {
             <button
               onClick={logout}
               className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              style={{ borderColor: "rgb(var(--border))" }}
             >
               Keluar
             </button>
@@ -461,7 +489,7 @@ async function updateStatus(orderId: string, status: Status) {
               <span className="ml-2 text-xs font-normal text-neutral-400">({headerLabel})</span>
             </div>
 
-<div className="mt-4 w-full" style={{ height: 320 }}>
+            <div className="mt-4 w-full" style={{ height: 320 }}>
               {series.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-neutral-500">
                   Belum ada data untuk ditampilkan.
@@ -473,22 +501,12 @@ async function updateStatus(orderId: string, status: Status) {
                     <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
-                      formatter={(val: any, name?: string) =>
-                        name === "revenue" ? rupiah(Number(val)) : val
-                      }
+                      formatter={(val: any, name?: string) => (name === "revenue" ? rupiah(Number(val)) : val)}
                       labelStyle={{ fontSize: 12 }}
                     />
                     <Legend />
                     <Line type="monotone" dataKey="orders" name="Pesanan" stroke="#2563EB" strokeWidth={3} dot={{ r: 3 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="revenue"
-                      name="Pendapatan"
-                      stroke="#16A34A"
-                      strokeWidth={3}
-                      dot={{ r: 3 }}
-                      strokeDasharray="6 6"
-                    />
+                    <Line type="monotone" dataKey="revenue" name="Pendapatan" stroke="#16A34A" strokeWidth={3} dot={{ r: 3 }} strokeDasharray="6 6" />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -505,8 +523,8 @@ async function updateStatus(orderId: string, status: Status) {
                   {activeStatus === "MENUNGGU"
                     ? "Menunggu Konfirmasi"
                     : activeStatus === "DITERIMA"
-                    ? "Sedang Diproses"
-                    : "Sudah Siap"}
+                      ? "Sedang Diproses"
+                      : "Sudah Siap"}
                 </div>
               </div>
 
@@ -587,6 +605,7 @@ function StatusCard({
   onClick: () => void;
 }) {
   const color = accent === "orange" ? "#F97316" : accent === "blue" ? "#3B82F6" : "#22C55E";
+
   return (
     <button
       onClick={onClick}
@@ -665,7 +684,6 @@ function OrderCard({
 
           <div className="mt-3 text-sm">
             <div className="text-neutral-500">Items ({itemCount})</div>
-
             <div className="mt-1 space-y-1">
               {(order.order_items ?? []).slice(0, 4).map((it, idx) => (
                 <div key={idx} className="flex justify-between text-sm">
@@ -677,7 +695,6 @@ function OrderCard({
                   </div>
                 </div>
               ))}
-
               {(order.order_items ?? []).length > 4 && (
                 <div className="text-xs text-neutral-400">
                   + {(order.order_items!.length - 4)} item lainnya
@@ -693,32 +710,33 @@ function OrderCard({
         </div>
       </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {status === "MENUNGGU" && (
-                <>
-                  <button
-                    onClick={onAccept}
-                    className="flex-1 rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600"
-                  >
-                    Terima
-                  </button>
-                  <button
-                    onClick={onCancel}
-                    className="flex-1 rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-500 hover:bg-red-50"
-                  >
-                    Batalkan
-                  </button>
-                </>
-              )}
-              {status === "DITERIMA" && (
-                <button
-                  onClick={onDone}
-                  className="flex-1 rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
-                >
-                  Selesai
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      }
+      <div className="mt-4 flex flex-wrap gap-2">
+        {status === "MENUNGGU" && (
+          <>
+            <button
+              onClick={onAccept}
+              className="flex-1 rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600"
+            >
+              Terima
+            </button>
+            <button
+              onClick={onCancel}
+              className="flex-1 rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-500 hover:bg-red-50"
+            >
+              Batalkan
+            </button>
+          </>
+        )}
+
+        {status === "DITERIMA" && (
+          <button
+            onClick={onDone}
+            className="flex-1 rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+          >
+            Selesai
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

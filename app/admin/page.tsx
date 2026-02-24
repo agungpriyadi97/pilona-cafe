@@ -2,11 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
+import ThemeLock from "../components/ThemeLock";
 import AuthGate from "../components/AuthGate";
 import { supabase } from "../lib/supabaseClient";
 
+/* =========================
+   Utils
+========================= */
 function rupiah(n: number) {
-  return "Rp " + (n ?? 0).toLocaleString("id-ID");
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return "Rp " + v.toLocaleString("id-ID");
 }
 
 function pct(part: number, total: number) {
@@ -16,6 +21,9 @@ function pct(part: number, total: number) {
 
 const medal = (i: number) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`);
 
+/* =========================
+   Types
+========================= */
 type Summary = {
   totalOrders: number;
   totalRevenue: number;
@@ -27,15 +35,27 @@ type Summary = {
 
 type SummaryOrError = Summary | { error: string };
 
+/* =========================
+   Page
+========================= */
 export default function AdminPage() {
   const [data, setData] = useState<SummaryOrError | null>(null);
   const [loading, setLoading] = useState(true);
 
   const isError = Boolean((data as any)?.error);
 
-  const dineIn = useMemo(() => (isError || !data ? 0 : (data as Summary).typeDist?.dineIn ?? 0), [data, isError]);
-  const takeAway = useMemo(() => (isError || !data ? 0 : (data as Summary).typeDist?.takeAway ?? 0), [data, isError]);
-  const totalOrders = useMemo(() => (isError || !data ? 0 : (data as Summary).totalOrders ?? 0), [data, isError]);
+  const dineIn = useMemo(
+    () => (isError || !data ? 0 : (data as Summary).typeDist?.dineIn ?? 0),
+    [data, isError]
+  );
+  const takeAway = useMemo(
+    () => (isError || !data ? 0 : (data as Summary).typeDist?.takeAway ?? 0),
+    [data, isError]
+  );
+  const totalOrders = useMemo(
+    () => (isError || !data ? 0 : (data as Summary).totalOrders ?? 0),
+    [data, isError]
+  );
 
   const dinePct = useMemo(() => pct(dineIn, totalOrders), [dineIn, totalOrders]);
   const takePct = useMemo(() => pct(takeAway, totalOrders), [takeAway, totalOrders]);
@@ -87,9 +107,12 @@ export default function AdminPage() {
 
   return (
     <AuthGate allow={["admin"]} nextPath="/admin">
+      {/* ✅ Kunci theme ke LIGHT di halaman admin */}
+      <ThemeLock mode="light" />
+
       <main className="min-h-screen">
-        {/* ✅ Navbar global (brand bisa balik ke home) */}
-        <Navbar />
+        {/* ✅ Navbar global, tapi hide toggle theme */}
+        <Navbar hideThemeToggle />
 
         <div className="mx-auto max-w-6xl px-5 py-8">
           {/* Action bar */}
@@ -197,6 +220,9 @@ export default function AdminPage() {
   );
 }
 
+/* =========================
+   UI Components
+========================= */
 function SummaryCard({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-2xl border bg-white p-6">
@@ -206,7 +232,15 @@ function SummaryCard({ title, value }: { title: string; value: string }) {
   );
 }
 
-function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Panel({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-2xl border bg-white p-6">
       <div className="font-semibold">{title}</div>

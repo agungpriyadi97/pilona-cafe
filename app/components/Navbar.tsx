@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import ThemeToggle from "../components/ThemeToggle";
 import { SITE } from "../data/site";
 import { supabase } from "../lib/supabaseClient";
@@ -14,7 +13,7 @@ function IconMenu() {
   );
 }
 
-export default function Navbar() {
+export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: boolean }) {
   const [token, setToken] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -52,8 +51,8 @@ export default function Navbar() {
     }
   }
 
-  const btn = "btn-ghost rounded-2xl px-4 py-2 text-sm font-semibold";
-  const menuItem = "block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90";
+  const btnClass = "rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition";
+  const btnStyle = { borderColor: "rgb(var(--border))" } as const;
 
   return (
     <header
@@ -65,11 +64,7 @@ export default function Navbar() {
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8 py-4">
         {/* Brand */}
-        <Link
-          href="/"
-          className="min-w-0 block select-none rounded-xl px-2 py-1 -mx-2 hover:opacity-90 transition"
-          aria-label="Kembali ke Beranda"
-        >
+        <a href="/" className="min-w-0">
           <div className="truncate font-semibold">
             {SITE.brand}{" "}
             <span className="hidden sm:inline" style={{ color: "rgb(var(--muted))" }}>
@@ -79,33 +74,34 @@ export default function Navbar() {
           <div className="sm:hidden text-xs" style={{ color: "rgb(var(--muted))" }}>
             {SITE.outlet}
           </div>
-        </Link>
+        </a>
 
         {/* Desktop actions */}
         <div className="hidden sm:flex items-center gap-3">
-          <a className={btn} href={SITE.instagram} target="_blank" rel="noreferrer">
+          <a className={btnClass} style={btnStyle} href={SITE.instagram} target="_blank" rel="noreferrer">
             Instagram
           </a>
-          <a className={btn} href={SITE.gofood} target="_blank" rel="noreferrer">
+          <a className={btnClass} style={btnStyle} href={SITE.gofood} target="_blank" rel="noreferrer">
             GoFood
           </a>
 
           {token && (
-            <button className={btn} onClick={logout}>
+            <button className={btnClass} style={btnStyle} onClick={logout}>
               Logout
             </button>
           )}
 
-          <ThemeToggle />
+          {!hideThemeToggle && <ThemeToggle />}
         </div>
 
         {/* Mobile actions */}
         <div className="flex sm:hidden items-center gap-2">
-          <ThemeToggle />
+          {!hideThemeToggle && <ThemeToggle />}
 
           <div className="relative" ref={panelRef}>
             <button
-              className="btn-ghost rounded-2xl p-2"
+              className="rounded-2xl border p-2 hover:opacity-90 transition"
+              style={btnStyle}
               onClick={() => setOpen((v) => !v)}
               aria-label="Open menu"
             >
@@ -118,7 +114,7 @@ export default function Navbar() {
                 style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--surface))" }}
               >
                 <a
-                  className={menuItem}
+                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
                   href={SITE.instagram}
                   target="_blank"
                   rel="noreferrer"
@@ -128,7 +124,7 @@ export default function Navbar() {
                 </a>
 
                 <a
-                  className={menuItem}
+                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
                   href={SITE.gofood}
                   target="_blank"
                   rel="noreferrer"
@@ -140,11 +136,18 @@ export default function Navbar() {
                 <div className="my-2 h-px" style={{ background: "rgb(var(--border))" }} />
 
                 {token ? (
-                  <button className={`${menuItem} w-full text-left`} onClick={logout}>
+                  <button
+                    className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold hover:opacity-90"
+                    onClick={logout}
+                  >
                     Logout
                   </button>
                 ) : (
-                  <a className={menuItem} href="/login" onClick={() => setOpen(false)}>
+                  <a
+                    className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
+                    href="/login"
+                    onClick={() => setOpen(false)}
+                  >
                     Login
                   </a>
                 )}
