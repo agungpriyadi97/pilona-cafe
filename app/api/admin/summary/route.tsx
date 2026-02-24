@@ -15,6 +15,34 @@ type ItemRow = {
   qty: number | null;
 };
 
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+}
+function startOfYear(d: Date) {
+  return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
+}
+
+async function sumRevenueBetween(
+  svc: ReturnType<typeof supabaseService>,
+  fromISO: string,
+  toISO: string
+) {
+  const { data, error } = await svc
+    .from("orders")
+    .select("total")
+    .eq("status", "SELESAI") // ✅ pendapatan = yang selesai
+    .gte("created_at", fromISO)
+    .lt("created_at", toISO);
+
+  if (error) throw error;
+  return (data ?? []).reduce((sum: number, r: any) => sum + (r.total ?? 0), 0);
+}
+
 export async function GET(req: Request) {
   try {
     // Admin & Cashier boleh lihat summary (kalau mau Admin only, ganti jadi ["admin"])
@@ -36,6 +64,24 @@ export async function GET(req: Request) {
     const totalOrders = o.length;
     const totalRevenue = o.reduce((sum, x) => sum + (x.total ?? 0), 0);
     const avgOrder = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
+
+    // ✅ Pendapatan Harian/Bulanan/Tahunan (berdasarkan SELESAI)
+    const now = new Date();
+
+    const fromDay = startOfDay(now);
+    const toDay = startOfDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+
+    const fromMonth = startOfMonth(now);
+    const toMonth = startOfMonth(new Date(now.getFullYear(), now.getMonth() + 1, 1));
+
+    const fromYear = startOfYear(now);
+    const toYear = startOfYear(new Date(now.getFullYear() + 1, 0, 1));
+
+    const [revenueDaily, revenueMonthly, revenueYearly] = await Promise.all([
+      sumRevenueBetween(svc, fromDay.toISOString(), toDay.toISOString()),
+      sumRevenueBetween(svc, fromMonth.toISOString(), toMonth.toISOString()),
+      sumRevenueBetween(svc, fromYear.toISOString(), toYear.toISOString()),
+    ]);
 
     // Top menu (sum qty)
     const { data: items, error: e2 } = await svc.from("order_items").select("name,qty");
@@ -73,6 +119,9 @@ export async function GET(req: Request) {
       totalOrders,
       totalRevenue,
       avgOrder,
+      revenueDaily,
+      revenueMonthly,
+      revenueYearly,
       topMenu,
       peakHours,
       typeDist: { dineIn, takeAway },

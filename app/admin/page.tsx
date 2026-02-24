@@ -31,6 +31,9 @@ type Summary = {
   topMenu: Array<{ name: string; count: number }>;
   peakHours: Array<{ hour: string; count: number }>;
   typeDist: { dineIn: number; takeAway: number };
+  dailyRevenue: number; // ✅ baru
+  monthlyRevenue: number; // ✅ baru
+  yearlyRevenue: number;  // ✅ baru
 };
 
 type SummaryOrError = Summary | { error: string };
@@ -175,48 +178,51 @@ export default function AdminPage() {
                 <SummaryCard title="Total Pesanan" value={String((data as Summary).totalOrders)} />
                 <SummaryCard title="Total Pendapatan" value={rupiah((data as Summary).totalRevenue)} />
                 <SummaryCard title="Rata-rata / pesanan" value={rupiah((data as Summary).avgOrder)} />
+                <SummaryCard title="Pendapatan Harian" value={rupiah((data as Summary).dailyRevenue)} /> {/* ✅ */}
+                <SummaryCard title="Pendapatan Bulanan" value={rupiah((data as Summary).monthlyRevenue)} /> {/* ✅ */}
+                <SummaryCard title="Pendapatan Tahunan" value={rupiah((data as Summary).yearlyRevenue)} />   {/* ✅ */}
+            </div>
+
+          {/* Top 5 + Peak hours */}
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <Panel title="🏆 Menu Terlaris (Top 5)" subtitle="Menu paling banyak dipesan">
+              <div className="space-y-2">
+                {((data as Summary).topMenu ?? []).slice(0, 5).map((x, i) => (
+                  <Row key={x.name} left={`${medal(i)} ${x.name}`} right={`${x.count} pesanan`} />
+                ))}
+                {((data as Summary).topMenu ?? []).length === 0 && (
+                  <div className="text-sm text-neutral-500">Belum ada data.</div>
+                )}
               </div>
+            </Panel>
 
-              {/* Top 5 + Peak hours */}
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <Panel title="🏆 Menu Terlaris (Top 5)" subtitle="Menu paling banyak dipesan">
-                  <div className="space-y-2">
-                    {((data as Summary).topMenu ?? []).slice(0, 5).map((x, i) => (
-                      <Row key={x.name} left={`${medal(i)} ${x.name}`} right={`${x.count} pesanan`} />
-                    ))}
-                    {((data as Summary).topMenu ?? []).length === 0 && (
-                      <div className="text-sm text-neutral-500">Belum ada data.</div>
-                    )}
-                  </div>
-                </Panel>
-
-                <Panel title="⏰ Jam Ramai" subtitle="Jam dengan pesanan terbanyak">
-                  <div className="space-y-2">
-                    {((data as Summary).peakHours ?? []).slice(0, 3).map((x, i) => (
-                      <Row key={x.hour} left={`📈 #${i + 1}: ${x.hour}`} right={`${x.count} pesanan`} />
-                    ))}
-                    {((data as Summary).peakHours ?? []).length === 0 && (
-                      <div className="text-sm text-neutral-500">Belum ada data.</div>
-                    )}
-                  </div>
-                </Panel>
+            <Panel title="⏰ Jam Ramai" subtitle="Jam dengan pesanan terbanyak">
+              <div className="space-y-2">
+                {((data as Summary).peakHours ?? []).slice(0, 3).map((x, i) => (
+                  <Row key={x.hour} left={`📈 #${i + 1}: ${x.hour}`} right={`${x.count} pesanan`} />
+                ))}
+                {((data as Summary).peakHours ?? []).length === 0 && (
+                  <div className="text-sm text-neutral-500">Belum ada data.</div>
+                )}
               </div>
+            </Panel>
+          </div>
 
-              {/* Type dist */}
-              <div className="mt-6 rounded-2xl border bg-white p-6">
-                <div className="font-semibold">☕ Distribusi Tipe</div>
-                <div className="mt-1 text-sm text-neutral-500">Dine-in vs Take Away</div>
+          {/* Type dist */}
+          <div className="mt-6 rounded-2xl border bg-white p-6">
+            <div className="font-semibold">☕ Distribusi Tipe</div>
+            <div className="mt-1 text-sm text-neutral-500">Dine-in vs Take Away</div>
 
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <TypeBox icon="☕" title="Dine-in" value={`${dineIn} (${dinePct}%)`} />
-                  <TypeBox icon="🛍️" title="Take Away" value={`${takeAway} (${takePct}%)`} />
-                </div>
-              </div>
-            </>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <TypeBox icon="☕" title="Dine-in" value={`${dineIn} (${dinePct}%)`} />
+              <TypeBox icon="🛍️" title="Take Away" value={`${takeAway} (${takePct}%)`} />
+            </div>
+          </div>
+        </>
           )}
-        </div>
-      </main>
-    </AuthGate>
+      </div>
+    </main>
+    </AuthGate >
   );
 }
 
