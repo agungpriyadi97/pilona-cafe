@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Navbar from "../components/Navbar";
 import AuthGate from "../components/AuthGate";
 import { supabase } from "../lib/supabaseClient";
 
@@ -30,20 +31,27 @@ export default function AdminPage() {
   const [data, setData] = useState<SummaryOrError | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const isError = Boolean((data as any)?.error);
+
+  const dineIn = useMemo(() => (isError || !data ? 0 : (data as Summary).typeDist?.dineIn ?? 0), [data, isError]);
+  const takeAway = useMemo(() => (isError || !data ? 0 : (data as Summary).typeDist?.takeAway ?? 0), [data, isError]);
+  const totalOrders = useMemo(() => (isError || !data ? 0 : (data as Summary).totalOrders ?? 0), [data, isError]);
+
+  const dinePct = useMemo(() => pct(dineIn, totalOrders), [dineIn, totalOrders]);
+  const takePct = useMemo(() => pct(takeAway, totalOrders), [takeAway, totalOrders]);
+
   async function downloadFile(kind: "csv" | "xlsx") {
     const { data: sess } = await supabase.auth.getSession();
     const token = sess.session?.access_token;
-    if (!token) {
-      alert("Silakan login dulu.");
-      return;
-    }
+
+    if (!token) return alert("Silakan login dulu.");
 
     const url = kind === "csv" ? "/api/admin/export.csv" : "/api/admin/export.xlsx";
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+
     if (!res.ok) {
       const j = await res.json().catch(() => null);
-      alert(j?.error ?? "Gagal export");
-      return;
+      return alert(j?.error ?? "Gagal export");
     }
 
     const blob = await res.blob();
@@ -61,9 +69,8 @@ export default function AdminPage() {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
 
-      // kalau belum login, biarin AuthGate yang redirect
       if (!token) {
-        setLoading(false);
+        setLoading(false); // AuthGate yang handle redirect
         return;
       }
 
@@ -78,73 +85,53 @@ export default function AdminPage() {
     })();
   }, []);
 
-  const isError = (data as any)?.error;
-
-  const dineIn = useMemo(() => {
-    if (!data || isError) return 0;
-    return (data as Summary).typeDist?.dineIn ?? 0;
-  }, [data, isError]);
-
-  const takeAway = useMemo(() => {
-    if (!data || isError) return 0;
-    return (data as Summary).typeDist?.takeAway ?? 0;
-  }, [data, isError]);
-
-  const totalOrders = useMemo(() => {
-    if (!data || isError) return 0;
-    return (data as Summary).totalOrders ?? 0;
-  }, [data, isError]);
-
-  const dinePct = useMemo(() => pct(dineIn, totalOrders), [dineIn, totalOrders]);
-  const takePct = useMemo(() => pct(takeAway, totalOrders), [takeAway, totalOrders]);
-
   return (
     <AuthGate allow={["admin"]} nextPath="/admin">
-      <main className="min-h-screen bg-white text-neutral-900">
-        {/* Topbar */}
-        <div className="border-b">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-            <div>
-              <div className="font-semibold">☕ Pilona Coffee</div>
-              <div className="text-xs text-neutral-500">Dashboard Admin</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <a
-                href="/admin/audit"
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              >
-                Riwayat Login
-              </a>
-
-              <button
-                onClick={() => downloadFile("csv")}
-                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              >
-                Export CSV
-              </button>
-
-              <button
-                onClick={() => downloadFile("xlsx")}
-                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              >
-                Export Excel
-              </button>
-              <a
-                href="/kasir"
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              >
-                Dashboard Kasir
-              </a>
-            </div>
-          </div>
-        </div>
+      <main className="min-h-screen">
+        {/* ✅ Navbar global (brand bisa balik ke home) */}
+        <Navbar />
 
         <div className="mx-auto max-w-6xl px-5 py-8">
-          <h1 className="text-2xl font-semibold">Ringkasan</h1>
+          {/* Action bar */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <a
+              href="/admin/audit"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+            >
+              Riwayat Login
+            </a>
+
+            <button
+              onClick={() => downloadFile("csv")}
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+            >
+              Export CSV
+            </button>
+
+            <button
+              onClick={() => downloadFile("xlsx")}
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+            >
+              Export Excel
+            </button>
+
+            <a
+              href="/kasir"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+            >
+              Dashboard Kasir
+            </a>
+          </div>
+
+          <h1 className="mt-6 text-2xl font-semibold">Ringkasan</h1>
           <p className="mt-1 text-sm text-neutral-500">Summary • Top 5 • Jam Ramai • Distribusi Tipe</p>
 
           {loading ? (
@@ -160,21 +147,21 @@ export default function AdminPage() {
             </div>
           ) : (
             <>
-              {/* 📊 Summary Cards */}
+              {/* Summary */}
               <div className="mt-6 grid gap-4 md:grid-cols-3">
                 <SummaryCard title="Total Pesanan" value={String((data as Summary).totalOrders)} />
                 <SummaryCard title="Total Pendapatan" value={rupiah((data as Summary).totalRevenue)} />
                 <SummaryCard title="Rata-rata / pesanan" value={rupiah((data as Summary).avgOrder)} />
               </div>
 
-              {/* 🏆 Top 5 + ⏰ Jam Ramai */}
+              {/* Top 5 + Peak hours */}
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <Panel title="🏆 Menu Terlaris (Top 5)" subtitle="Menu paling banyak dipesan">
                   <div className="space-y-2">
                     {((data as Summary).topMenu ?? []).slice(0, 5).map((x, i) => (
                       <Row key={x.name} left={`${medal(i)} ${x.name}`} right={`${x.count} pesanan`} />
                     ))}
-                    {(!(data as Summary).topMenu || (data as Summary).topMenu.length === 0) && (
+                    {((data as Summary).topMenu ?? []).length === 0 && (
                       <div className="text-sm text-neutral-500">Belum ada data.</div>
                     )}
                   </div>
@@ -185,14 +172,14 @@ export default function AdminPage() {
                     {((data as Summary).peakHours ?? []).slice(0, 3).map((x, i) => (
                       <Row key={x.hour} left={`📈 #${i + 1}: ${x.hour}`} right={`${x.count} pesanan`} />
                     ))}
-                    {(!(data as Summary).peakHours || (data as Summary).peakHours.length === 0) && (
+                    {((data as Summary).peakHours ?? []).length === 0 && (
                       <div className="text-sm text-neutral-500">Belum ada data.</div>
                     )}
                   </div>
                 </Panel>
               </div>
 
-              {/* ☕ Distribusi Tipe */}
+              {/* Type dist */}
               <div className="mt-6 rounded-2xl border bg-white p-6">
                 <div className="font-semibold">☕ Distribusi Tipe</div>
                 <div className="mt-1 text-sm text-neutral-500">Dine-in vs Take Away</div>
@@ -219,15 +206,7 @@ function SummaryCard({ title, value }: { title: string; value: string }) {
   );
 }
 
-function Panel({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
+function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border bg-white p-6">
       <div className="font-semibold">{title}</div>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import ThemeToggle from "../components/ThemeToggle";
 import { SITE } from "../data/site";
 import { supabase } from "../lib/supabaseClient";
@@ -64,7 +65,11 @@ export default function Navbar() {
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8 py-4">
         {/* Brand */}
-        <div className="min-w-0">
+        <Link
+          href="/"
+          className="min-w-0 block select-none rounded-xl px-2 py-1 -mx-2 hover:opacity-90 transition"
+          aria-label="Kembali ke Beranda"
+        >
           <div className="truncate font-semibold">
             {SITE.brand}{" "}
             <span className="hidden sm:inline" style={{ color: "rgb(var(--muted))" }}>
@@ -74,7 +79,7 @@ export default function Navbar() {
           <div className="sm:hidden text-xs" style={{ color: "rgb(var(--muted))" }}>
             {SITE.outlet}
           </div>
-        </div>
+        </Link>
 
         {/* Desktop actions */}
         <div className="hidden sm:flex items-center gap-3">

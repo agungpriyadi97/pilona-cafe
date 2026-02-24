@@ -1,5 +1,6 @@
 "use client";
 
+import Navbar from "../components/Navbar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../components/AuthGate";
 import { supabase } from "../lib/supabaseClient";
@@ -84,15 +85,11 @@ export default function KasirPage() {
   const [range, setRange] = useState<"today" | "week" | "month">("today");
   const [activeStatus, setActiveStatus] = useState<Status>("MENUNGGU");
 
-  // keep latest value for realtime/polling (avoid resubscribe)
+  // keep latest values without resubscribe
   const rangeRef = useRef(range);
   const activeStatusRef = useRef(activeStatus);
-  useEffect(() => {
-    rangeRef.current = range;
-  }, [range]);
-  useEffect(() => {
-    activeStatusRef.current = activeStatus;
-  }, [activeStatus]);
+  useEffect(() => void (rangeRef.current = range), [range]);
+  useEffect(() => void (activeStatusRef.current = activeStatus), [activeStatus]);
 
   // counts
   const [countMenunggu, setCountMenunggu] = useState(0);
@@ -110,22 +107,18 @@ export default function KasirPage() {
   // sound
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(soundEnabled);
-  useEffect(() => {
-    soundEnabledRef.current = soundEnabled;
-  }, [soundEnabled]);
+  useEffect(() => void (soundEnabledRef.current = soundEnabled), [soundEnabled]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUnlockedRef = useRef(false);
 
-  // fallback polling notif
-
+  // realtime/anti-double
   const lastStatusByIdRef = useRef<Record<string, Status>>({});
   const lastBeepAtRef = useRef(0);
+
+  // fallback polling (optional)
   const prevMenungguCountRef = useRef<number>(0);
   const hasInitCountRef = useRef(false);
-
-  // anti double beep
-  const lastNotifiedIdRef = useRef<string | null>(null);
 
   /* ---------- Audio init ---------- */
   useEffect(() => {
@@ -134,157 +127,46 @@ export default function KasirPage() {
     audioRef.current = a;
   }, []);
 
-  async function unlockAudio() {
-    const a = audioRef.current;
-    if (!a) return;
+async function unlockAudio() {
+  const a = audioRef.current;
+  if (!a) return;
 
-    // unlock autoplay policy: play silent, pause
-    a.volume = 0;
-    a.currentTime = 0;
-    await a.play();
-    a.pause();
-    a.currentTime = 0;
-    a.volume = 1;
+  a.volume = 0;
+  a.currentTime = 0;
+  await a.play();
+  a.pause();
+  a.currentTime = 0;
+  a.volume = 1;
 
-    audioUnlockedRef.current = true;
-    console.log("✅ Audio unlocked");
-  }
+  audioUnlockedRef.current = true;
+  console.log("✅ Audio unlocked");
+}
 
-  async function enableSound() {
-    setSoundEnabled(true);
-    try {
-      await unlockAudio();
-      alert("Notifikasi suara aktif ✅");
-    } catch (err) {
-      console.warn("Audio unlock blocked:", err);
-      alert("Browser masih memblokir autoplay. Coba klik Enable Sound sekali lagi.");
-    }
-  }
-
-  async function playNotif() {
-    if (!soundEnabledRef.current) return;
-    if (!audioUnlockedRef.current) return;
-
-    const a = audioRef.current;
-    if (!a) return;
-
-    try {
-      a.currentTime = 0;
-      await a.play();
-    } catch (err) {
-      console.warn("Audio play failed:", err);
-    }
-  }
-
-  /* ---------- Data loaders ---------- */
-  async function loadCounts() {
-    const { data, error } = await supabase.from("orders").select("status");
-    if (error) {
-      console.error("loadCounts error:", error);
-      return;
-    }
-
-    const rows = (data ?? []) as Array<{ status: Status }>;
-    const m = rows.filter((r) => r.status === "MENUNGGU").length;
-    const d = rows.filter((r) => r.status === "DITERIMA").length;
-    const s = rows.filter((r) => r.status === "SELESAI").length;
-
-    // fallback polling: bunyi kalau MENUNGGU naik (setelah init pertama)
-    if (hasInitCountRef.current && m > prevMenungguCountRef.current) {
-      await playNotif();
-    }
-    prevMenungguCountRef.current = m;
-    hasInitCountRef.current = true;
-
-    setCountMenunggu(m);
-    setCountDiterima(d);
-    setCountSelesai(s);
-  }
-
-  async function loadQueueToday() {
+async function loadChart() {
+  try {
     const now = new Date();
-    const start = startOfDay(now);
-    const end = addDays(start, 1);
+    const map = new Map<string, SeriesPoint>();
 
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, created_at")
-      .gte("created_at", start.toISOString())
-      .lt("created_at", end.toISOString())
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("loadQueueToday error:", error);
-      return;
-    }
-
-    const map: Record<string, number> = {};
-    (data ?? []).forEach((o: any, idx: number) => {
-      map[o.id] = idx + 1;
-    });
-
-    setQueueMap(map);
-  }
-
-  async function loadChart() {
-    const now = new Date();
-    const r = rangeRef.current;
-
-    // TODAY: per jam
-    if (r === "today") {
-      const start = startOfDay(now);
-      const end = addDays(start, 1);
-
-      const { data, error } = await supabase
-        .from("orders")
-        .select("created_at,total")
-        .gte("created_at", start.toISOString())
-        .lt("created_at", end.toISOString());
-
-      if (error) {
-        console.error("loadChart(today) error:", error);
-        return;
+    if (range === "today") {
+      const d = startOfDay(now);
+      map.set(d.toISOString(), { label: fmtDay(d), orders: 0, revenue: 0 });
+    } else if (range === "week") {
+      for (let i = 6; i >= 0; i--) {
+        const d = startOfDay(addDays(now, -i));
+        map.set(d.toISOString(), { label: fmtDay(d), orders: 0, revenue: 0 });
       }
-
-      const buckets = new Map<number, { orders: number; revenue: number }>();
-      for (let h = 0; h < 24; h++) buckets.set(h, { orders: 0, revenue: 0 });
-
-      for (const o of (data ?? []) as any[]) {
-        const d = new Date(o.created_at);
-        const h = d.getHours();
-        const b = buckets.get(h)!;
-        b.orders += 1;
-        b.revenue += o.total ?? 0;
+    } else {
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(y, i, 1);
+        const label = String(i + 1).padStart(2, "0");
+        map.set(d.toISOString(), { label, orders: 0, revenue: 0 });
       }
-
-      setSeries(
-        Array.from({ length: 24 }, (_, h) => ({
-          label: `${String(h).padStart(2, "0")}:00`,
-          orders: buckets.get(h)!.orders,
-          revenue: buckets.get(h)!.revenue,
-        }))
-      );
-      return;
     }
 
-    // WEEK/MONTH: per hari
-    const days = r === "week" ? 7 : 30;
-    const end = startOfDay(addDays(now, 1));
-    const start = startOfDay(addDays(now, -(days - 1)));
-
-    const { data, error } = await supabase
-      .from("orders")
-      .select("created_at,total")
-      .gte("created_at", start.toISOString())
-      .lt("created_at", end.toISOString());
-
-    if (error) {
-      console.error("loadChart(days) error:", error);
-      return;
-    }
-
-    const map = new Map<string, { orders: number; revenue: number }>();
-    for (let i = 0; i < days; i++) map.set(fmtDay(addDays(start, i)), { orders: 0, revenue: 0 });
+    const { data, error } = await supabase.from("orders").select("created_at,total").eq("status", "SELESAI");
+    if (error) return console.error("loadChart error:", error);
 
     for (const o of (data ?? []) as any[]) {
       const key = fmtDay(new Date(o.created_at));
@@ -294,14 +176,11 @@ export default function KasirPage() {
       b.revenue += o.total ?? 0;
     }
 
-    setSeries(
-      [...map.entries()].map(([date, v]) => ({
-        label: date.slice(5),
-        orders: v.orders,
-        revenue: v.revenue,
-      }))
-    );
+    setSeries([...map.entries()].map(([, v]) => v));
+  } catch (e) {
+    console.error("loadChart error:", e);
   }
+}
 
   async function loadOrders() {
     setLoadingOrders(true);
@@ -316,11 +195,7 @@ export default function KasirPage() {
         .eq("status", st)
         .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("loadOrders error:", error);
-        return;
-      }
-
+      if (error) return console.error("loadOrders error:", error);
       setOrders((data ?? []) as OrderRow[]);
     } finally {
       setLoadingOrders(false);
@@ -331,124 +206,101 @@ export default function KasirPage() {
     await Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
   }
 
-  /* ---------- Realtime subscribe (ONCE) + polling fallback ---------- */
-useEffect(() => {
-  let alive = true;
+  /* ---------- Realtime subscribe ONCE + polling fallback ---------- */
+  useEffect(() => {
+    let alive = true;
 
-  const safe = async (fn: () => Promise<any>) => {
-    try {
-      if (!alive) return;
-      await fn();
-    } catch (e) {
-      console.log("❌ realtime handler error:", e);
-    }
-  };
-
-  const beepOnce = async () => {
-    const now = Date.now();
-    const cooldownMs = 1200;
-    if (now - lastBeepAtRef.current < cooldownMs) return;
-
-    lastBeepAtRef.current = now;
-    await playNotif();
-  };
-
-  const refreshAllLocal = () =>
-    Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
-
-  // initial load
-  safe(refreshAllLocal);
-
-  const channel = supabase
-    .channel("kasir-orders-realtime")
-
-    // ✅ customer baru pesan (INSERT)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, (payload) => {
-      const row = payload.new as any;
-      const id = row?.id as string | undefined;
-      const st = row?.status as Status | undefined;
-
-      if (id && st) lastStatusByIdRef.current[id] = st;
-
-      if (st === "MENUNGGU") {
-        safe(beepOnce); // 🔔 bunyi sekali
+    const safe = async (fn: () => Promise<any>) => {
+      try {
+        if (!alive) return;
+        await fn();
+      } catch (e) {
+        console.log("❌ handler error:", e);
       }
+    };
 
-      safe(refreshAllLocal);
-    })
+    const refreshAllLocal = () =>
+      Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
 
-    // ✅ status berubah (UPDATE)
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (payload) => {
-      const row = payload.new as any;
-      const id = row?.id as string | undefined;
-      const nextStatus = row?.status as Status | undefined;
+    // initial load
+    safe(refreshAllLocal);
 
-      if (!id || !nextStatus) {
+    const channel = supabase
+      .channel("kasir-orders-realtime")
+
+      // ✅ customer baru pesan (INSERT)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, (payload) => {
+        const row = payload.new as any;
+        const id = row?.id as string | undefined;
+        const st = row?.status as Status | undefined;
+
+        if (id && st) lastStatusByIdRef.current[id] = st;
+
+        if (st === "MENUNGGU") {
+          if (shouldBeepNow()) safe(playNotif);
+        }
+
         safe(refreshAllLocal);
-        return;
-      }
+      })
 
-      const prevStatus = lastStatusByIdRef.current[id];
+      // ✅ status berubah (UPDATE)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (payload) => {
+        const row = payload.new as any;
+        const id = row?.id as string | undefined;
+        const nextStatus = row?.status as Status | undefined;
 
-      // simpan status terbaru
-      lastStatusByIdRef.current[id] = nextStatus;
+        if (!id || !nextStatus) return void safe(refreshAllLocal);
 
-      // kalau prev belum ada, kita skip bunyi agar tidak random
-      if (!prevStatus) {
+        const prevStatus = lastStatusByIdRef.current[id];
+        lastStatusByIdRef.current[id] = nextStatus;
+
+        // kalau belum pernah lihat id ini, skip bunyi biar nggak random
+        if (!prevStatus) return void safe(refreshAllLocal);
+
+        const changed = prevStatus !== nextStatus;
+
+        const shouldBeep =
+          changed &&
+          ((prevStatus === "MENUNGGU" && nextStatus === "DITERIMA") || // mulai masak
+            (prevStatus === "MENUNGGU" && nextStatus === "BATAL") || // batalkan
+            (prevStatus === "DITERIMA" && nextStatus === "SELESAI")); // selesai (opsional)
+
+        if (shouldBeep) {
+          if (shouldBeepNow()) safe(playNotif);
+        }
+
         safe(refreshAllLocal);
-        return;
-      }
+      })
 
-      const changed = prevStatus !== nextStatus;
+      // item berubah
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
+        safe(loadOrders);
+      })
+      .subscribe((status) => console.log("✅ Realtime status:", status));
 
-      const shouldBeep =
-        changed &&
-        (
-          (prevStatus === "MENUNGGU" && nextStatus === "DITERIMA") || // mulai masak
-          (prevStatus === "MENUNGGU" && nextStatus === "BATAL") ||    // batalkan
-          (prevStatus === "DITERIMA" && nextStatus === "SELESAI")     // selesai (opsional)
-        );
+    // fallback polling kalau websocket putus
+    const timer = setInterval(() => safe(refreshAllLocal), 4000);
 
-      if (shouldBeep) {
-        safe(beepOnce); // 🔔 bunyi sekali
-      }
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      safe(refreshAllLocal);
-    })
-
-    // order_items berubah -> refresh list
-    .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
-      safe(loadOrders);
-    })
-
-    .subscribe((status) => {
-      console.log("✅ Realtime status:", status);
-    });
-
-  // fallback polling (kalau websocket putus)
-  const timer = setInterval(() => safe(refreshAllLocal), 4000);
-
-  return () => {
-    alive = false;
-    clearInterval(timer);
-    supabase.removeChannel(channel);
-  };
-  // penting: jangan masukin range/activeStatus di deps biar nggak resubscribe terus
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
-  // kalau user ganti tab range / filter status => refresh data (tanpa resubscribe)
+  // kalau user ganti range / status: refresh tanpa resubscribe
   useEffect(() => {
     refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, activeStatus]);
 
-  async function logout() {
-    await supabase.auth.signOut();
-    location.href = "/";
-  }
+async function logout() {
+  await supabase.auth.signOut();
+  location.href = "/";
+}
 
-  async function updateStatus(orderId: string, status: Status) {
+async function updateStatus(orderId: string, status: Status) {
     const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
     if (error) return alert(error.message);
     await refreshAll();
@@ -463,6 +315,59 @@ useEffect(() => {
     await refreshAll();
   }
 
+  function shouldBeepNow() {
+    const now = Date.now();
+    if (now - lastBeepAtRef.current < 2000) return false;
+    lastBeepAtRef.current = now;
+    return true;
+  }
+
+  async function playNotif() {
+    const a = audioRef.current;
+    if (!a || !soundEnabledRef.current) return;
+    a.currentTime = 0;
+    await a.play().catch(() => {});
+  }
+
+  async function enableSound() {
+    if (soundEnabled) return;
+    setSoundEnabled(true);
+    await unlockAudio();
+  }
+
+  async function loadCounts() {
+    try {
+      const { data: d1 } = await supabase.from("orders").select("id", { count: "exact" }).eq("status", "MENUNGGU");
+      const { data: d2 } = await supabase.from("orders").select("id", { count: "exact" }).eq("status", "DITERIMA");
+      const { data: d3 } = await supabase.from("orders").select("id", { count: "exact" }).eq("status", "SELESAI");
+      setCountMenunggu(d1?.length ?? 0);
+      setCountDiterima(d2?.length ?? 0);
+      setCountSelesai(d3?.length ?? 0);
+    } catch (e) {
+      console.error("loadCounts error:", e);
+    }
+  }
+
+  async function loadQueueToday() {
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id")
+        .gte("created_at", startOfDay(new Date()).toISOString())
+        .eq("status", "SELESAI")
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      (data ?? []).forEach((row: any, idx: number) => {
+        map[row.id] = idx + 1;
+      });
+      setQueueMap(map);
+    } catch (e) {
+      console.error("loadQueueToday error:", e);
+    }
+  }
+
   const headerLabel = useMemo(() => {
     if (range === "today") return "Hari ini";
     if (range === "week") return "Mingguan";
@@ -471,53 +376,47 @@ useEffect(() => {
 
   return (
     <AuthGate allow={["admin", "cashier"]} nextPath="/kasir">
-      <main className="min-h-screen bg-white text-neutral-900">
-        {/* Topbar */}
-        <div className="border-b">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="text-xl">☕</div>
-              <div>
-                <div className="font-semibold">Pilona Coffee</div>
-                <div className="text-xs text-neutral-500">Dashboard Kasir</div>
-              </div>
-            </div>
+      <main className="min-h-screen">
+        {/* ✅ Navbar global: klik brand balik ke Home */}
+        <Navbar />
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={enableSound}
-                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-                title="Klik sekali agar notifikasi audio diizinkan browser"
-              >
-                {soundEnabled ? "Sound: ON" : "Enable Sound"}
-              </button>
+        <div className="mx-auto max-w-6xl px-5 py-6">
+          {/* Action bar (kasir) */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              onClick={enableSound}
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+              title="Klik sekali agar notifikasi audio diizinkan browser"
+            >
+              {soundEnabled ? "Sound: ON" : "Enable Sound"}
+            </button>
 
-              <button
-                onClick={async () => {
-                  try {
-                    if (!soundEnabledRef.current) setSoundEnabled(true);
-                    if (!audioUnlockedRef.current) await unlockAudio();
-                    await playNotif();
-                  } catch { }
-                }}
-                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              >
-                Test Sound
-              </button>
+            <button
+              onClick={async () => {
+                try {
+                  if (!soundEnabledRef.current) setSoundEnabled(true);
+                  if (!audioUnlockedRef.current) await unlockAudio();
+                  await playNotif();
+                } catch {}
+              }}
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+            >
+              Test Sound
+            </button>
 
-              <button
-                onClick={logout}
-                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
-              >
-                Keluar
-              </button>
-            </div>
+            <button
+              onClick={logout}
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+            >
+              Keluar
+            </button>
           </div>
-        </div>
 
-        <div className="mx-auto max-w-6xl px-5 py-8">
           {/* Range Tabs */}
-          <div className="flex gap-2">
+          <div className="mt-6 flex gap-2">
             <RangeBtn active={range === "today"} onClick={() => setRange("today")}>
               Hari ini
             </RangeBtn>
@@ -562,7 +461,7 @@ useEffect(() => {
               <span className="ml-2 text-xs font-normal text-neutral-400">({headerLabel})</span>
             </div>
 
-            <div className="mt-4 w-full" style={{ height: 320 }}>
+<div className="mt-4 w-full" style={{ height: 320 }}>
               {series.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-neutral-500">
                   Belum ada data untuk ditampilkan.
@@ -580,14 +479,7 @@ useEffect(() => {
                       labelStyle={{ fontSize: 12 }}
                     />
                     <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="orders"
-                      name="Pesanan"
-                      stroke="#2563EB"
-                      strokeWidth={3}
-                      dot={{ r: 3 }}
-                    />
+                    <Line type="monotone" dataKey="orders" name="Pesanan" stroke="#2563EB" strokeWidth={3} dot={{ r: 3 }} />
                     <Line
                       type="monotone"
                       dataKey="revenue"
@@ -613,8 +505,8 @@ useEffect(() => {
                   {activeStatus === "MENUNGGU"
                     ? "Menunggu Konfirmasi"
                     : activeStatus === "DITERIMA"
-                      ? "Sedang Diproses"
-                      : "Sudah Siap"}
+                    ? "Sedang Diproses"
+                    : "Sudah Siap"}
                 </div>
               </div>
 
@@ -771,7 +663,6 @@ function OrderCard({
 
           <div className="mt-1 text-xs text-neutral-400">{time}</div>
 
-          {/* Items */}
           <div className="mt-3 text-sm">
             <div className="text-neutral-500">Items ({itemCount})</div>
 
@@ -802,33 +693,32 @@ function OrderCard({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {status === "MENUNGGU" && (
-          <>
-            <button
-              onClick={onAccept}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-            >
-              Mulai Masak
-            </button>
-            <button
-              onClick={onCancel}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-            >
-              Batalkan
-            </button>
-          </>
-        )}
-
-        {status === "DITERIMA" && (
-          <button
-            onClick={onDone}
-            className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-          >
-            Selesai / Siap
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {status === "MENUNGGU" && (
+                <>
+                  <button
+                    onClick={onAccept}
+                    className="flex-1 rounded-xl bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600"
+                  >
+                    Terima
+                  </button>
+                  <button
+                    onClick={onCancel}
+                    className="flex-1 rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-500 hover:bg-red-50"
+                  >
+                    Batalkan
+                  </button>
+                </>
+              )}
+              {status === "DITERIMA" && (
+                <button
+                  onClick={onDone}
+                  className="flex-1 rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+                >
+                  Selesai
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      }
