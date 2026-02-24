@@ -24,9 +24,9 @@ export default function HomePage() {
       <StickyWA />
 
       {/* HERO */}
-      <section className="mx-auto max-w-6xl px-5 py-14">
+      <section className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
         <div
-          className="relative overflow-hidden rounded-[32px] border"
+          className="relative overflow-hidden rounded-[24px] sm:rounded-[32px] border"
           style={{ borderColor: "rgb(var(--border))" }}
         >
           {/* Background image */}
@@ -41,7 +41,7 @@ export default function HomePage() {
             }}
           />
 
-          {/* Overlay gelap biar teks kebaca */}
+          {/* Overlay */}
           <div
             className="absolute inset-0"
             style={{
@@ -51,15 +51,20 @@ export default function HomePage() {
           />
 
           {/* Content */}
-          <div className="relative p-10 md:p-14">
+          <div className="relative p-6 sm:p-10 md:p-14">
             <div className="max-w-2xl">
-              <h1 className="text-4xl font-bold md:text-5xl">{SITE.brand}</h1>
-              <p className="mt-3 text-base md:text-lg" style={{ color: "rgb(var(--muted))" }}>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold">{SITE.brand}</h1>
+
+              <p className="mt-3 text-sm sm:text-base md:text-lg" style={{ color: "rgb(var(--muted))" }}>
                 Kopi, non-coffee, dan tempat nyaman untuk ngobrol. Outlet: {SITE.outlet}.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-3">
-                <a href="/menu" className="btn-primary rounded-2xl px-5 py-3 text-sm font-semibold">
+              {/* tombol jadi wrap rapi di mobile */}
+              <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row flex-wrap gap-3">
+                <a
+                  href="/menu"
+                  className="btn-primary rounded-2xl px-5 py-3 text-sm font-semibold text-center"
+                >
                   Lihat Menu
                 </a>
 
@@ -67,23 +72,22 @@ export default function HomePage() {
                   href={SITE.gofood}
                   target="_blank"
                   rel="noreferrer"
-                  className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold"
+                  className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center"
                 >
                   Pesan via GoFood
                 </a>
 
-                <a href="/kasir" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold">
+                <a href="/kasir" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center">
                   Dashboard Kasir
                 </a>
 
-                <a href="/admin" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold">
+                <a href="/admin" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center">
                   Dashboard Admin
                 </a>
               </div>
 
-
-              {/* Highlight */}
-              <div className="mt-10 grid gap-4 md:grid-cols-3">
+              {/* highlight jadi 1 kolom di mobile */}
+              <div className="mt-8 sm:mt-10 grid gap-4 md:grid-cols-3">
                 <Highlight title="Cozy & Minimal" desc="Indoor & outdoor, cocok kerja ringan." />
                 <Highlight title="Best Seller" desc="Kopi Untukmu 2.0 Bold jadi favorit." />
                 <Highlight title="Order Cepat" desc="Klik menu → isi data → kasir proses." />
