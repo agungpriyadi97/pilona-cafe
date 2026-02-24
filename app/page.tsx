@@ -77,11 +77,20 @@ export default function HomePage() {
                   Pesan via GoFood
                 </a>
 
-                <a href="/kasir" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center">
+                <a
+                  href="/kasir"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center"
+                >
                   Dashboard Kasir
                 </a>
 
-                <a href="/admin" className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center">
+                <a href="/admin" 
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center"
+                >
                   Dashboard Admin
                 </a>
               </div>
