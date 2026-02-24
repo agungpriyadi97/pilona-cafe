@@ -25,6 +25,19 @@
 html,body{height:100%}
 body{background:rgb(var(--bg));color:rgb(var(--text))}
 
+/* HERO text colors */
+:root{
+  --heroTitle: 255 255 255;
+  --heroDesc: 220 220 220;
+  --heroOverlay: linear-gradient(90deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.30) 100%);
+}
+
+.light{
+  --heroTitle: 20 20 20;
+  --heroDesc: 60 60 60;
+  --heroOverlay: linear-gradient(90deg, rgba(255,255,255,0.70) 0%, rgba(255,255,255,0.40) 60%, rgba(255,255,255,0.15) 100%);
+}
+
 /* Buttons */
 .btn-primary {
   background: rgb(var(--brand));

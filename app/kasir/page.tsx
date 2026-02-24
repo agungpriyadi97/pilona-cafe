@@ -38,7 +38,8 @@ type OrderRow = {
 };
 
 function rupiah(n: number) {
-  return "Rp " + (n ?? 0).toLocaleString("id-ID");
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return "Rp " + v.toLocaleString("id-ID");
 }
 
 function startOfDay(d: Date) {
@@ -68,40 +69,83 @@ export default function KasirPage() {
   const [countSelesai, setCountSelesai] = useState(0);
 
   // chart series
-  const [series, setSeries] = useState<Array<{ label: string; orders: number; revenue: number }>>(
-    []
-  );
+  const [series, setSeries] = useState<Array<{ label: string; orders: number; revenue: number }>>([]);
 
   // order list
   const [queueMap, setQueueMap] = useState<Record<string, number>>({});
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+
+  // sound
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // notif refs
   const prevMenungguCountRef = useRef<number>(0);
+  const hasInitCountRef = useRef(false);
+
+  // init audio (preload)
+  useEffect(() => {
+    audioRef.current = new Audio("/notif.mp3");
+    audioRef.current.preload = "auto";
+  }, []);
+
+  async function enableSound() {
+    setSoundEnabled(true);
+    try {
+      // unlock autoplay policy: play tiny then pause
+      const a = audioRef.current;
+      if (a) {
+        a.currentTime = 0;
+        await a.play();
+        a.pause();
+        a.currentTime = 0;
+      }
+      alert("Notifikasi suara aktif ✅");
+    } catch (err) {
+      console.log("Enable sound blocked:", err);
+      alert("Browser masih memblokir autoplay. Coba klik Enable Sound sekali lagi.");
+    }
+  }
+
+  async function playNotif() {
+    if (!soundEnabled) return;
+    try {
+      const a = audioRef.current;
+      if (!a) return;
+      a.currentTime = 0;
+      await a.play();
+    } catch (err) {
+      // jangan kosongin catch biar ketauan diblok
+      console.log("Audio blocked:", err);
+    }
+  }
 
   async function loadCounts() {
     const { data, error } = await supabase.from("orders").select("status");
     if (error) {
-      console.error(error);
+      console.error("loadCounts error:", error);
       return;
     }
+
     const rows = (data ?? []) as Array<{ status: Status }>;
     const m = rows.filter((r) => r.status === "MENUNGGU").length;
     const d = rows.filter((r) => r.status === "DITERIMA").length;
     const s = rows.filter((r) => r.status === "SELESAI").length;
 
     // bunyi notif kalau ada order baru masuk MENUNGGU
-    if (prevMenungguCountRef.current !== 0 && m > prevMenungguCountRef.current) {
-      try {
-        const audio = new Audio("/notif.mp3");
-        await audio.play();
-      } catch { }
+    if (hasInitCountRef.current && m > prevMenungguCountRef.current) {
+      await playNotif();
     }
+
     prevMenungguCountRef.current = m;
+    if (!hasInitCountRef.current) hasInitCountRef.current = true;
 
     setCountMenunggu(m);
     setCountDiterima(d);
     setCountSelesai(s);
   }
+
   async function loadQueueToday() {
     const now = new Date();
     const start = startOfDay(now);
@@ -115,7 +159,7 @@ export default function KasirPage() {
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.error(error);
+      console.error("loadQueueToday error:", error);
       return;
     }
 
@@ -126,6 +170,7 @@ export default function KasirPage() {
 
     setQueueMap(map);
   }
+
   async function loadChart() {
     const now = new Date();
 
@@ -141,7 +186,7 @@ export default function KasirPage() {
         .lt("created_at", end.toISOString());
 
       if (error) {
-        console.error(error);
+        console.error("loadChart(today) error:", error);
         return;
       }
 
@@ -178,7 +223,7 @@ export default function KasirPage() {
       .lt("created_at", end.toISOString());
 
     if (error) {
-      console.error(error);
+      console.error("loadChart(days) error:", error);
       return;
     }
 
@@ -214,7 +259,7 @@ export default function KasirPage() {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error(error);
+        console.error("loadOrders error:", error);
         return;
       }
       setOrders((data ?? []) as OrderRow[]);
@@ -223,24 +268,32 @@ export default function KasirPage() {
     }
   }
 
+  async function refreshAll() {
+    await Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
+  }
+
   // init + realtime refresh
   useEffect(() => {
-    loadCounts();
-    loadChart();
-    loadQueueToday();
-    loadOrders();
+    refreshAll();
 
+    // realtime
     const channel = supabase
       .channel("kasir-dashboard-v2")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, async () => {
-        await Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
+        await refreshAll();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, async () => {
         await loadOrders();
       })
       .subscribe();
 
+    // ✅ fallback polling (kalau realtime gagal)
+    const timer = setInterval(() => {
+      refreshAll(); // ini akan memicu loadCounts -> playNotif kalau menunggu naik
+    }, 4000); // 4 detik
+
     return () => {
+      clearInterval(timer);
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,8 +310,7 @@ export default function KasirPage() {
       alert(error.message);
       return;
     }
-    loadCounts();
-    loadOrders();
+    await refreshAll();
   }
 
   async function cancelOrder(orderId: string) {
@@ -270,8 +322,7 @@ export default function KasirPage() {
       alert(error.message);
       return;
     }
-    loadCounts();
-    loadOrders();
+    await refreshAll();
   }
 
   const headerLabel = useMemo(() => {
@@ -294,11 +345,21 @@ export default function KasirPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <div className="text-xs text-neutral-500">Cashier</div>
-                <div className="text-xs text-neutral-400">cashier</div>
-              </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={enableSound}
+                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+                title="Klik sekali agar notifikasi audio diizinkan browser"
+              >
+                {soundEnabled ? "Sound: ON" : "Enable Sound"}
+              </button>
+              <button
+                onClick={() => playNotif()}
+                className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              >
+                Test Sound
+              </button>
+
               <button
                 onClick={logout}
                 className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
@@ -323,7 +384,7 @@ export default function KasirPage() {
             </RangeBtn>
           </div>
 
-          {/* Status Cards (klik untuk filter list) */}
+          {/* Status Cards */}
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             <StatusCard
               title="MENUNGGU KONFIRMASI"
@@ -420,7 +481,7 @@ export default function KasirPage() {
               </button>
             </div>
 
-            <div className="mt-5 max-h-520px space-y-4 overflow-auto pr-2">
+            <div className="mt-5 max-h-[520px] space-y-4 overflow-auto pr-2">
               {loadingOrders ? (
                 <div className="rounded-xl border p-5 text-sm text-neutral-500">Loading...</div>
               ) : orders.length === 0 ? (
@@ -433,7 +494,7 @@ export default function KasirPage() {
                     key={o.id}
                     order={o}
                     status={activeStatus}
-                    queueNo={queueMap[o.id]}  // <-- tambah ini
+                    queueNo={queueMap[o.id]}
                     onAccept={() => updateStatus(o.id, "DITERIMA")}
                     onDone={() => updateStatus(o.id, "SELESAI")}
                     onCancel={() => cancelOrder(o.id)}
@@ -448,7 +509,15 @@ export default function KasirPage() {
   );
 }
 
-function RangeBtn({ active, onClick, children }: any) {
+function RangeBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}
@@ -501,8 +570,10 @@ function StatusCard({
 }
 
 function badgeStatus(status: Status) {
-  if (status === "MENUNGGU") return { text: "MENUNGGU KONFIRMASI", bg: "#FFF7ED", fg: "#C2410C", bd: "#FED7AA" };
-  if (status === "DITERIMA") return { text: "SEDANG DIPROSES", bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE" };
+  if (status === "MENUNGGU")
+    return { text: "MENUNGGU KONFIRMASI", bg: "#FFF7ED", fg: "#C2410C", bd: "#FED7AA" };
+  if (status === "DITERIMA")
+    return { text: "SEDANG DIPROSES", bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE" };
   return { text: "SUDAH SIAP", bg: "#ECFDF5", fg: "#15803D", bd: "#BBF7D0" };
 }
 
@@ -516,7 +587,7 @@ function OrderCard({
 }: {
   order: OrderRow;
   status: Status;
-  queueNo: number;
+  queueNo?: number;
   onAccept: () => void;
   onDone: () => void;
   onCancel: () => void;
@@ -557,6 +628,7 @@ function OrderCard({
             ) : null}
             {order.customer_name} • {order.customer_phone}
           </div>
+
           <div className="mt-1 text-xs text-neutral-400">{time}</div>
 
           <div className="mt-3 text-sm">
@@ -567,11 +639,15 @@ function OrderCard({
                   <div className="truncate">
                     {it.qty}x {it.name}
                   </div>
-                  <div className="text-neutral-500">{it.price_label ?? (it.price_value ? rupiah(it.price_value) : "")}</div>
+                  <div className="text-neutral-500">
+                    {it.price_label ?? (it.price_value ? rupiah(it.price_value) : "")}
+                  </div>
                 </div>
               ))}
               {(order.order_items ?? []).length > 4 && (
-                <div className="text-xs text-neutral-400">+ {(order.order_items!.length - 4)} item lainnya</div>
+                <div className="text-xs text-neutral-400">
+                  + {(order.order_items!.length - 4)} item lainnya
+                </div>
               )}
             </div>
           </div>

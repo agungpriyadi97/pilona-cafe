@@ -42,20 +42,22 @@ export default function HomePage() {
           />
 
           {/* Overlay */}
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(90deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.30) 100%)",
-            }}
-          />
+          <div className="absolute inset-0" style={{ background: "var(--heroOverlay)" }} />
 
           {/* Content */}
           <div className="relative p-6 sm:p-10 md:p-14">
             <div className="max-w-2xl">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold">{SITE.brand}</h1>
+              <h1
+                className="text-3xl sm:text-4xl md:text-5xl font-bold"
+                style={{ color: "rgb(var(--heroTitle))" }}
+              >
+                {SITE.brand}
+              </h1>
 
-              <p className="mt-3 text-sm sm:text-base md:text-lg" style={{ color: "rgb(var(--muted))" }}>
+              <p
+                className="mt-3 text-sm sm:text-base md:text-lg"
+                style={{ color: "rgb(var(--heroDesc))" }}
+              >
                 Kopi, non-coffee, dan tempat nyaman untuk ngobrol. Outlet: {SITE.outlet}.
               </p>
 
@@ -86,10 +88,10 @@ export default function HomePage() {
                   Dashboard Kasir
                 </a>
 
-                <a href="/admin" 
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center"
+                <a href="/admin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-ghost rounded-2xl px-5 py-3 text-sm font-semibold text-center"
                 >
                   Dashboard Admin
                 </a>
