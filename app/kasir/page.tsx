@@ -4,16 +4,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../components/AuthGate";
 import { supabase } from "../lib/supabaseClient";
 import {
-  LineChart,
-  Line,
   CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
 } from "recharts";
 
+/* =========================
+   Types
+========================= */
 type Status = "MENUNGGU" | "DITERIMA" | "SELESAI" | "BATAL";
 type OrderType = "DINE_IN" | "TAKE_AWAY";
 
@@ -37,6 +40,11 @@ type OrderRow = {
   order_items?: OrderItemRow[];
 };
 
+type SeriesPoint = { label: string; orders: number; revenue: number };
+
+/* =========================
+   Utils
+========================= */
 function rupiah(n: number) {
   const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
   return "Rp " + v.toLocaleString("id-ID");
@@ -47,11 +55,13 @@ function startOfDay(d: Date) {
   x.setHours(0, 0, 0, 0);
   return x;
 }
+
 function addDays(d: Date, n: number) {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
 }
+
 function fmtDay(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -59,68 +69,114 @@ function fmtDay(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+function badgeStatus(status: Status) {
+  if (status === "MENUNGGU")
+    return { text: "MENUNGGU KONFIRMASI", bg: "#FFF7ED", fg: "#C2410C", bd: "#FED7AA" };
+  if (status === "DITERIMA")
+    return { text: "SEDANG DIPROSES", bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE" };
+  return { text: "SUDAH SIAP", bg: "#ECFDF5", fg: "#15803D", bd: "#BBF7D0" };
+}
+
+/* =========================
+   Page
+========================= */
 export default function KasirPage() {
   const [range, setRange] = useState<"today" | "week" | "month">("today");
   const [activeStatus, setActiveStatus] = useState<Status>("MENUNGGU");
+
+  // keep latest value for realtime/polling (avoid resubscribe)
+  const rangeRef = useRef(range);
+  const activeStatusRef = useRef(activeStatus);
+  useEffect(() => {
+    rangeRef.current = range;
+  }, [range]);
+  useEffect(() => {
+    activeStatusRef.current = activeStatus;
+  }, [activeStatus]);
 
   // counts
   const [countMenunggu, setCountMenunggu] = useState(0);
   const [countDiterima, setCountDiterima] = useState(0);
   const [countSelesai, setCountSelesai] = useState(0);
 
-  // chart series
-  const [series, setSeries] = useState<Array<{ label: string; orders: number; revenue: number }>>([]);
+  // chart
+  const [series, setSeries] = useState<SeriesPoint[]>([]);
 
-  // order list
+  // orders
   const [queueMap, setQueueMap] = useState<Record<string, number>>({});
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   // sound
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const soundEnabledRef = useRef(soundEnabled);
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
-  // notif refs
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUnlockedRef = useRef(false);
+
+  // fallback polling notif
+
+  const lastStatusByIdRef = useRef<Record<string, Status>>({});
+  const lastBeepAtRef = useRef(0);
   const prevMenungguCountRef = useRef<number>(0);
   const hasInitCountRef = useRef(false);
 
-  // init audio (preload)
+  // anti double beep
+  const lastNotifiedIdRef = useRef<string | null>(null);
+
+  /* ---------- Audio init ---------- */
   useEffect(() => {
-    audioRef.current = new Audio("/notif.mp3");
-    audioRef.current.preload = "auto";
+    const a = new Audio("/notif.mp3");
+    a.preload = "auto";
+    audioRef.current = a;
   }, []);
+
+  async function unlockAudio() {
+    const a = audioRef.current;
+    if (!a) return;
+
+    // unlock autoplay policy: play silent, pause
+    a.volume = 0;
+    a.currentTime = 0;
+    await a.play();
+    a.pause();
+    a.currentTime = 0;
+    a.volume = 1;
+
+    audioUnlockedRef.current = true;
+    console.log("✅ Audio unlocked");
+  }
 
   async function enableSound() {
     setSoundEnabled(true);
     try {
-      // unlock autoplay policy: play tiny then pause
-      const a = audioRef.current;
-      if (a) {
-        a.currentTime = 0;
-        await a.play();
-        a.pause();
-        a.currentTime = 0;
-      }
+      await unlockAudio();
       alert("Notifikasi suara aktif ✅");
     } catch (err) {
-      console.log("Enable sound blocked:", err);
+      console.warn("Audio unlock blocked:", err);
       alert("Browser masih memblokir autoplay. Coba klik Enable Sound sekali lagi.");
     }
   }
 
   async function playNotif() {
-    if (!soundEnabled) return;
+    if (!soundEnabledRef.current) return;
+    if (!audioUnlockedRef.current) return;
+
+    const a = audioRef.current;
+    if (!a) return;
+
     try {
-      const a = audioRef.current;
-      if (!a) return;
       a.currentTime = 0;
       await a.play();
     } catch (err) {
-      // jangan kosongin catch biar ketauan diblok
-      console.log("Audio blocked:", err);
+      console.warn("Audio play failed:", err);
     }
   }
 
+  /* ---------- Data loaders ---------- */
   async function loadCounts() {
     const { data, error } = await supabase.from("orders").select("status");
     if (error) {
@@ -133,13 +189,12 @@ export default function KasirPage() {
     const d = rows.filter((r) => r.status === "DITERIMA").length;
     const s = rows.filter((r) => r.status === "SELESAI").length;
 
-    // bunyi notif kalau ada order baru masuk MENUNGGU
+    // fallback polling: bunyi kalau MENUNGGU naik (setelah init pertama)
     if (hasInitCountRef.current && m > prevMenungguCountRef.current) {
       await playNotif();
     }
-
     prevMenungguCountRef.current = m;
-    if (!hasInitCountRef.current) hasInitCountRef.current = true;
+    hasInitCountRef.current = true;
 
     setCountMenunggu(m);
     setCountDiterima(d);
@@ -165,7 +220,7 @@ export default function KasirPage() {
 
     const map: Record<string, number> = {};
     (data ?? []).forEach((o: any, idx: number) => {
-      map[o.id] = idx + 1; // nomor antrian harian
+      map[o.id] = idx + 1;
     });
 
     setQueueMap(map);
@@ -173,9 +228,10 @@ export default function KasirPage() {
 
   async function loadChart() {
     const now = new Date();
+    const r = rangeRef.current;
 
-    // TODAY: bucket per jam 0-23
-    if (range === "today") {
+    // TODAY: per jam
+    if (r === "today") {
       const start = startOfDay(now);
       const end = addDays(start, 1);
 
@@ -203,7 +259,7 @@ export default function KasirPage() {
 
       setSeries(
         Array.from({ length: 24 }, (_, h) => ({
-          label: String(h).padStart(2, "0") + ":00",
+          label: `${String(h).padStart(2, "0")}:00`,
           orders: buckets.get(h)!.orders,
           revenue: buckets.get(h)!.revenue,
         }))
@@ -211,8 +267,8 @@ export default function KasirPage() {
       return;
     }
 
-    // WEEK/MONTH: bucket per hari
-    const days = range === "week" ? 7 : 30;
+    // WEEK/MONTH: per hari
+    const days = r === "week" ? 7 : 30;
     const end = startOfDay(addDays(now, 1));
     const start = startOfDay(addDays(now, -(days - 1)));
 
@@ -240,7 +296,7 @@ export default function KasirPage() {
 
     setSeries(
       [...map.entries()].map(([date, v]) => ({
-        label: date.slice(5), // MM-DD
+        label: date.slice(5),
         orders: v.orders,
         revenue: v.revenue,
       }))
@@ -250,18 +306,21 @@ export default function KasirPage() {
   async function loadOrders() {
     setLoadingOrders(true);
     try {
+      const st = activeStatusRef.current;
+
       const { data, error } = await supabase
         .from("orders")
         .select(
           "id,created_at,customer_name,customer_phone,order_type,status,subtotal,tax,total,order_items(name,qty,price_label,price_value)"
         )
-        .eq("status", activeStatus)
+        .eq("status", st)
         .order("created_at", { ascending: false });
 
       if (error) {
         console.error("loadOrders error:", error);
         return;
       }
+
       setOrders((data ?? []) as OrderRow[]);
     } finally {
       setLoadingOrders(false);
@@ -272,30 +331,115 @@ export default function KasirPage() {
     await Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
   }
 
-  // init + realtime refresh
+  /* ---------- Realtime subscribe (ONCE) + polling fallback ---------- */
+useEffect(() => {
+  let alive = true;
+
+  const safe = async (fn: () => Promise<any>) => {
+    try {
+      if (!alive) return;
+      await fn();
+    } catch (e) {
+      console.log("❌ realtime handler error:", e);
+    }
+  };
+
+  const beepOnce = async () => {
+    const now = Date.now();
+    const cooldownMs = 1200;
+    if (now - lastBeepAtRef.current < cooldownMs) return;
+
+    lastBeepAtRef.current = now;
+    await playNotif();
+  };
+
+  const refreshAllLocal = () =>
+    Promise.all([loadCounts(), loadChart(), loadQueueToday(), loadOrders()]);
+
+  // initial load
+  safe(refreshAllLocal);
+
+  const channel = supabase
+    .channel("kasir-orders-realtime")
+
+    // ✅ customer baru pesan (INSERT)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, (payload) => {
+      const row = payload.new as any;
+      const id = row?.id as string | undefined;
+      const st = row?.status as Status | undefined;
+
+      if (id && st) lastStatusByIdRef.current[id] = st;
+
+      if (st === "MENUNGGU") {
+        safe(beepOnce); // 🔔 bunyi sekali
+      }
+
+      safe(refreshAllLocal);
+    })
+
+    // ✅ status berubah (UPDATE)
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (payload) => {
+      const row = payload.new as any;
+      const id = row?.id as string | undefined;
+      const nextStatus = row?.status as Status | undefined;
+
+      if (!id || !nextStatus) {
+        safe(refreshAllLocal);
+        return;
+      }
+
+      const prevStatus = lastStatusByIdRef.current[id];
+
+      // simpan status terbaru
+      lastStatusByIdRef.current[id] = nextStatus;
+
+      // kalau prev belum ada, kita skip bunyi agar tidak random
+      if (!prevStatus) {
+        safe(refreshAllLocal);
+        return;
+      }
+
+      const changed = prevStatus !== nextStatus;
+
+      const shouldBeep =
+        changed &&
+        (
+          (prevStatus === "MENUNGGU" && nextStatus === "DITERIMA") || // mulai masak
+          (prevStatus === "MENUNGGU" && nextStatus === "BATAL") ||    // batalkan
+          (prevStatus === "DITERIMA" && nextStatus === "SELESAI")     // selesai (opsional)
+        );
+
+      if (shouldBeep) {
+        safe(beepOnce); // 🔔 bunyi sekali
+      }
+
+      safe(refreshAllLocal);
+    })
+
+    // order_items berubah -> refresh list
+    .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
+      safe(loadOrders);
+    })
+
+    .subscribe((status) => {
+      console.log("✅ Realtime status:", status);
+    });
+
+  // fallback polling (kalau websocket putus)
+  const timer = setInterval(() => safe(refreshAllLocal), 4000);
+
+  return () => {
+    alive = false;
+    clearInterval(timer);
+    supabase.removeChannel(channel);
+  };
+  // penting: jangan masukin range/activeStatus di deps biar nggak resubscribe terus
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+  // kalau user ganti tab range / filter status => refresh data (tanpa resubscribe)
   useEffect(() => {
     refreshAll();
-
-    // realtime
-    const channel = supabase
-      .channel("kasir-dashboard-v2")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, async () => {
-        await refreshAll();
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, async () => {
-        await loadOrders();
-      })
-      .subscribe();
-
-    // ✅ fallback polling (kalau realtime gagal)
-    const timer = setInterval(() => {
-      refreshAll(); // ini akan memicu loadCounts -> playNotif kalau menunggu naik
-    }, 4000); // 4 detik
-
-    return () => {
-      clearInterval(timer);
-      supabase.removeChannel(channel);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, activeStatus]);
 
@@ -306,10 +450,7 @@ export default function KasirPage() {
 
   async function updateStatus(orderId: string, status: Status) {
     const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
     await refreshAll();
   }
 
@@ -318,10 +459,7 @@ export default function KasirPage() {
     if (!ok) return;
 
     const { error } = await supabase.from("orders").update({ status: "BATAL" }).eq("id", orderId);
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
     await refreshAll();
   }
 
@@ -353,8 +491,15 @@ export default function KasirPage() {
               >
                 {soundEnabled ? "Sound: ON" : "Enable Sound"}
               </button>
+
               <button
-                onClick={() => playNotif()}
+                onClick={async () => {
+                  try {
+                    if (!soundEnabledRef.current) setSoundEnabled(true);
+                    if (!audioUnlockedRef.current) await unlockAudio();
+                    await playNotif();
+                  } catch { }
+                }}
                 className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
               >
                 Test Sound
@@ -509,6 +654,9 @@ export default function KasirPage() {
   );
 }
 
+/* =========================
+   Components
+========================= */
 function RangeBtn({
   active,
   onClick,
@@ -569,14 +717,6 @@ function StatusCard({
   );
 }
 
-function badgeStatus(status: Status) {
-  if (status === "MENUNGGU")
-    return { text: "MENUNGGU KONFIRMASI", bg: "#FFF7ED", fg: "#C2410C", bd: "#FED7AA" };
-  if (status === "DITERIMA")
-    return { text: "SEDANG DIPROSES", bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE" };
-  return { text: "SUDAH SIAP", bg: "#ECFDF5", fg: "#15803D", bd: "#BBF7D0" };
-}
-
 function OrderCard({
   order,
   status,
@@ -631,8 +771,10 @@ function OrderCard({
 
           <div className="mt-1 text-xs text-neutral-400">{time}</div>
 
+          {/* Items */}
           <div className="mt-3 text-sm">
             <div className="text-neutral-500">Items ({itemCount})</div>
+
             <div className="mt-1 space-y-1">
               {(order.order_items ?? []).slice(0, 4).map((it, idx) => (
                 <div key={idx} className="flex justify-between text-sm">
@@ -644,6 +786,7 @@ function OrderCard({
                   </div>
                 </div>
               ))}
+
               {(order.order_items ?? []).length > 4 && (
                 <div className="text-xs text-neutral-400">
                   + {(order.order_items!.length - 4)} item lainnya
