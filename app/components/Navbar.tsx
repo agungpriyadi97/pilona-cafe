@@ -25,7 +25,6 @@ export default function Navbar() {
     })();
   }, []);
 
-  // close on outside click
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!open) return;
@@ -52,9 +51,8 @@ export default function Navbar() {
     }
   }
 
-  const btnClass =
-    "rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition";
-  const btnStyle = { borderColor: "rgb(var(--border))" } as const;
+  const btn = "btn-ghost rounded-2xl px-4 py-2 text-sm font-semibold";
+  const menuItem = "block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90";
 
   return (
     <header
@@ -80,15 +78,15 @@ export default function Navbar() {
 
         {/* Desktop actions */}
         <div className="hidden sm:flex items-center gap-3">
-          <a className={btnClass} style={btnStyle} href={SITE.instagram} target="_blank" rel="noreferrer">
+          <a className={btn} href={SITE.instagram} target="_blank" rel="noreferrer">
             Instagram
           </a>
-          <a className={btnClass} style={btnStyle} href={SITE.gofood} target="_blank" rel="noreferrer">
+          <a className={btn} href={SITE.gofood} target="_blank" rel="noreferrer">
             GoFood
           </a>
 
           {token && (
-            <button className={btnClass} style={btnStyle} onClick={logout}>
+            <button className={btn} onClick={logout}>
               Logout
             </button>
           )}
@@ -102,8 +100,7 @@ export default function Navbar() {
 
           <div className="relative" ref={panelRef}>
             <button
-              className="rounded-2xl border p-2 hover:opacity-90 transition"
-              style={btnStyle}
+              className="btn-ghost rounded-2xl p-2"
               onClick={() => setOpen((v) => !v)}
               aria-label="Open menu"
             >
@@ -116,7 +113,7 @@ export default function Navbar() {
                 style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--surface))" }}
               >
                 <a
-                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
+                  className={menuItem}
                   href={SITE.instagram}
                   target="_blank"
                   rel="noreferrer"
@@ -126,7 +123,7 @@ export default function Navbar() {
                 </a>
 
                 <a
-                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
+                  className={menuItem}
                   href={SITE.gofood}
                   target="_blank"
                   rel="noreferrer"
@@ -138,18 +135,11 @@ export default function Navbar() {
                 <div className="my-2 h-px" style={{ background: "rgb(var(--border))" }} />
 
                 {token ? (
-                  <button
-                    className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold hover:opacity-90"
-                    onClick={logout}
-                  >
+                  <button className={`${menuItem} w-full text-left`} onClick={logout}>
                     Logout
                   </button>
                 ) : (
-                  <a
-                    className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
-                    href="/login"
-                    onClick={() => setOpen(false)}
-                  >
+                  <a className={menuItem} href="/login" onClick={() => setOpen(false)}>
                     Login
                   </a>
                 )}

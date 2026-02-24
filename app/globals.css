@@ -51,3 +51,21 @@ body{background:rgb(var(--bg));color:rgb(var(--text))}
   transform: translateY(-1px);
 }
 .btn-ghost:active { transform: translateY(0px); }
+
+/* ===== Bright Minimal: ghost jadi filled seperti primary ===== */
+.light .btn-ghost{
+  background: rgb(var(--brand));
+  color: rgb(var(--brandText));
+  border-color: rgba(0,0,0,0); /* hilangin border */
+}
+
+.light .btn-ghost:hover{
+  opacity: 0.92;
+  transform: translateY(-1px);
+  background: rgb(var(--brand));
+  border-color: rgba(0,0,0,0);
+}
+
+.light .btn-ghost:active{
+  transform: translateY(0px);
+}
