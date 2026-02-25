@@ -1,8 +1,9 @@
 export type CartItem = {
-  key: string; // unik
+  key: string;
   name: string;
   desc?: string;
-  priceValue: number; // rupiah
+  priceValue: number;
+  priceLabel: string;
   qty: number;
 };
 
