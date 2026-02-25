@@ -3,8 +3,10 @@
 import ThemeToggle from "../components/ThemeToggle";
 import { SITE } from "../data/site";
 import { supabase } from "../lib/supabaseClient";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOrder } from "./OrderProvider";
+
+type Role = "admin" | "cashier" | null;
 
 function IconMenu() {
   return (
@@ -13,7 +15,6 @@ function IconMenu() {
     </svg>
   );
 }
-
 function IconCart() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -32,32 +33,46 @@ function IconCart() {
 
 export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: boolean }) {
   const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<Role>(null);
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const { cartCount, openCart } = useOrder();
 
-  // ✅ session listener biar navbar auto update setelah login/logout
-  useEffect(() => {
-    let mounted = true;
+  async function syncSessionAndRole(accessToken: string | null) {
+    setToken(accessToken);
+    if (!accessToken) {
+      setRole(null);
+      return;
+    }
 
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setToken(data.session?.access_token ?? null);
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setToken(session?.access_token ?? null);
+    // ambil role dari /api/me
+    const res = await fetch("/api/me", {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
+    if (!res.ok) {
+      setRole(null);
+      return;
+    }
+
+    const json = await res.json().catch(() => null);
+    setRole((json?.role ?? null) as Role);
+  }
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      await syncSessionAndRole(data.session?.access_token ?? null);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+      await syncSessionAndRole(session?.access_token ?? null);
+    });
+
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  // close on outside click
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!open) return;
@@ -68,15 +83,6 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
   }, [open]);
-
-  async function loginGoogle() {
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-    if (error) console.error("loginGoogle:", error);
-  }
 
   async function logout() {
     try {
@@ -95,6 +101,22 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
 
   const btnClass = "rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition";
   const btnStyle = { borderColor: "rgb(var(--border))" } as const;
+
+  const dashboardHref = useMemo(() => {
+    return (path: "/kasir" | "/admin") => {
+      if (!token) return `/login?next=${encodeURIComponent(path)}`;
+
+      // role check
+      if (path === "/admin" && role !== "admin") {
+        return `/login?next=${encodeURIComponent(path)}&denied=1`;
+      }
+      if (path === "/kasir" && role !== "admin" && role !== "cashier") {
+        return `/login?next=${encodeURIComponent(path)}&denied=1`;
+      }
+
+      return path;
+    };
+  }, [token, role]);
 
   return (
     <header
@@ -118,7 +140,7 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
           </div>
         </a>
 
-        {/* Desktop actions */}
+        {/* Desktop */}
         <div className="hidden sm:flex items-center gap-3">
           <a className={btnClass} style={btnStyle} href={SITE.instagram} target="_blank" rel="noreferrer">
             Instagram
@@ -128,7 +150,11 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
           </a>
 
           {/* Cart */}
-          <button onClick={openCart} className={`${btnClass} relative`} style={btnStyle}>
+          <button
+            onClick={openCart}
+            className="relative rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
+            style={btnStyle}
+          >
             <span className="inline-flex items-center gap-2">
               <IconCart />
               Keranjang
@@ -143,23 +169,29 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
             )}
           </button>
 
-          {/* ✅ Login / Logout */}
-          {!token ? (
-            <button className={btnClass} style={btnStyle} onClick={loginGoogle}>
-              Login
-            </button>
-          ) : (
+          {/* Dashboard links (role-aware) */}
+          <a className={btnClass} style={btnStyle} href={dashboardHref("/kasir")}>
+            Dashboard Kasir
+          </a>
+          <a className={btnClass} style={btnStyle} href={dashboardHref("/admin")}>
+            Dashboard Admin
+          </a>
+
+          {token ? (
             <button className={btnClass} style={btnStyle} onClick={logout}>
               Logout
             </button>
+          ) : (
+            <a className={btnClass} style={btnStyle} href="/login">
+              Login
+            </a>
           )}
 
           {!hideThemeToggle && <ThemeToggle />}
         </div>
 
-        {/* Mobile actions */}
+        {/* Mobile */}
         <div className="flex sm:hidden items-center gap-2">
-          {/* Cart */}
           <button
             onClick={openCart}
             className="relative rounded-2xl border p-2 hover:opacity-90 transition"
@@ -203,7 +235,6 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
                 >
                   Instagram
                 </a>
-
                 <a
                   className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
                   href={SITE.gofood}
@@ -216,23 +247,38 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
 
                 <div className="my-2 h-px" style={{ background: "rgb(var(--border))" }} />
 
-                {!token ? (
-                  <button
-                    className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold hover:opacity-90"
-                    onClick={() => {
-                      setOpen(false);
-                      loginGoogle();
-                    }}
-                  >
-                    Login
-                  </button>
-                ) : (
+                <a
+                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
+                  href={dashboardHref("/kasir")}
+                  onClick={() => setOpen(false)}
+                >
+                  Dashboard Kasir
+                </a>
+                <a
+                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
+                  href={dashboardHref("/admin")}
+                  onClick={() => setOpen(false)}
+                >
+                  Dashboard Admin
+                </a>
+
+                <div className="my-2 h-px" style={{ background: "rgb(var(--border))" }} />
+
+                {token ? (
                   <button
                     className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold hover:opacity-90"
                     onClick={logout}
                   >
                     Logout
                   </button>
+                ) : (
+                  <a
+                    className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
+                    href="/login"
+                    onClick={() => setOpen(false)}
+                  >
+                    Login
+                  </a>
                 )}
               </div>
             )}

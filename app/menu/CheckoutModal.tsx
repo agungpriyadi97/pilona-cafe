@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { CartItem, CheckoutPayload, OrderType } from "./cartTypes";
-import { createOrderDB } from "../lib/orderDb"; // <- sesuaikan path kamu
+import { supabase } from "../lib/supabaseClient"; // ✅ tambah ini (ambil token dari session)
 
 function rupiah(n: number) {
   const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
@@ -37,24 +37,51 @@ export default function CheckoutModal({
   async function submit() {
     if (!canSubmit) return;
     setLoading(true);
+
     try {
+      // ✅ WAJIB LOGIN: ambil session + token
+      const { data: sess, error: sessErr } = await supabase.auth.getSession();
+      if (sessErr) throw sessErr;
+
+      const token = sess.session?.access_token;
+      if (!token) {
+        alert("Silakan login dulu untuk pesan 🙂");
+        // ganti next kalau kamu mau balik ke halaman tertentu
+        location.href = "/login?next=/menu";
+        return;
+      }
+
       const payload: CheckoutPayload = {
         customerName: name.trim(),
         customerPhone: phone.trim(),
         orderType,
       };
 
-      await createOrderDB({
-        customerName: payload.customerName,
-        customerPhone: payload.customerPhone,
-        orderType: payload.orderType,
+      const body = {
+        ...payload,
         items: cart.map((c) => ({
           name: c.name,
-          priceLabel: c.priceLabel,
-          priceValue: c.priceValue,
+          priceLabel: c.priceLabel ?? undefined, // ✅ jangan null
+          priceValue: c.priceValue ?? undefined,
           qty: c.qty,
         })),
+      };
+
+      // ✅ KIRIM KE API (server yang insert ke DB pakai service role)
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
       });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Gagal kirim pesanan");
+      }
 
       alert("Pesanan terkirim ✅");
       onSuccess();
@@ -69,8 +96,10 @@ export default function CheckoutModal({
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="relative w-full max-w-lg rounded-3xl border p-6 shadow-xl"
-           style={{ background: "rgb(var(--surface))", borderColor: "rgb(var(--border))" }}>
+      <div
+        className="relative w-full max-w-lg rounded-3xl border p-6 shadow-xl"
+        style={{ background: "rgb(var(--surface))", borderColor: "rgb(var(--border))" }}
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-xl font-semibold">Checkout</div>
@@ -88,9 +117,12 @@ export default function CheckoutModal({
           </button>
         </div>
 
-        <div className="mt-5 rounded-2xl border p-4"
-             style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--bg))" }}>
+        <div
+          className="mt-5 rounded-2xl border p-4"
+          style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--bg))" }}
+        >
           <div className="text-sm font-semibold">Ringkasan</div>
+
           <div className="mt-2 space-y-1 text-sm" style={{ color: "rgb(var(--muted))" }}>
             {cart.slice(0, 6).map((c) => (
               <div key={`${c.name}-${c.priceLabel}`} className="flex justify-between gap-3">

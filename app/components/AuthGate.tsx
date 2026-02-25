@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
+type Role = "admin" | "cashier";
+
 export default function AuthGate({
   allow,
   nextPath,
   children,
 }: {
-  allow: Array<"admin" | "cashier">;
+  allow: Role[];
   nextPath: string;
   children: React.ReactNode;
 }) {
@@ -17,25 +19,55 @@ export default function AuthGate({
   const [ok, setOk] = useState<null | boolean>(null);
 
   useEffect(() => {
+    let alive = true;
+
     (async () => {
       const { data } = await supabase.auth.getSession();
       const session = data.session;
 
+      // belum login -> ke login
       if (!session) {
         router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
         return;
       }
 
-      const { data: prof, error } = await supabase.from("profiles").select("role").eq("user_id", session.user.id).single();
-      if (error || !prof?.role || !allow.includes(prof.role)) {
+      // cek role via API
+      const res = await fetch("/api/me", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (!res.ok) {
         router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
         return;
       }
 
-      setOk(true);
+      const json = await res.json().catch(() => null);
+      const role = json?.role as Role | null;
+
+      // role tidak sesuai -> tetap lempar ke login (biar kamu bisa ganti akun)
+      if (!role || !allow.includes(role)) {
+        router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+        return;
+      }
+
+      if (alive) setOk(true);
     })();
+
+    return () => {
+      alive = false;
+    };
   }, [router, allow, nextPath]);
 
-  if (ok === null) return <div className="min-h-screen flex items-center justify-center" style={{ color: "rgb(var(--muted))" }}>Loading...</div>;
+  if (ok === null) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ color: "rgb(var(--muted))" }}
+      >
+        Loading...
+      </div>
+    );
+  }
+
   return <>{children}</>;
 }

@@ -1,47 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
-import Navbar from "../components/Navbar";
 
 export default function LoginPage() {
-  const [loading, setLoading] = useState(false);
+  const params = useSearchParams();
+  const next = params.get("next") || "/";
 
   async function loginGoogle() {
-    try {
-      setLoading(true);
-      const origin = window.location.origin;
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${origin}/auth/callback`,
-        },
-      });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
 
-      if (error) alert(error.message);
-    } finally {
-      setLoading(false);
-    }
+    if (error) alert(error.message);
   }
 
   return (
-    <main className="min-h-screen">
-      <Navbar />
-
-      <div className="mx-auto max-w-md px-5 py-16">
+    <main className="min-h-screen flex items-center justify-center px-5">
+      <div className="w-full max-w-md rounded-3xl border p-6" style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--surface))" }}>
         <h1 className="text-2xl font-semibold">Login</h1>
         <p className="mt-2 text-sm" style={{ color: "rgb(var(--muted))" }}>
-          Untuk pesan menu, silakan login dulu.
+          Login untuk lanjut ke dashboard.
         </p>
 
         <button
-          disabled={loading}
           onClick={loginGoogle}
-          className="mt-6 w-full rounded-2xl px-4 py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+          className="mt-6 w-full rounded-2xl px-4 py-3 text-sm font-semibold hover:opacity-90"
           style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
         >
-          {loading ? "Memproses..." : "Login dengan Google"}
+          Login dengan Gmail
         </button>
       </div>
     </main>
