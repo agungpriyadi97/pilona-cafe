@@ -1,10 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import ThemeToggle from "../components/ThemeToggle";
 import { SITE } from "../data/site";
 import { supabase } from "../lib/supabaseClient";
-import { useEffect, useRef, useState } from "react";
-import { useOrder } from "./OrderProvider"; // ✅ tambah ini
+import { useOrder } from "./OrderProvider";
 
 function IconMenu() {
   return (
@@ -30,21 +30,45 @@ function IconCart() {
   );
 }
 
+function CartBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="absolute -right-2 -top-2 min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold"
+      style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
+    >
+      {count}
+    </span>
+  );
+}
+
 export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: boolean }) {
   const [token, setToken] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ cart
   const { cartCount, openCart } = useOrder();
 
+  // session init + realtime update (login/logout di tab lain juga ke-detect)
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getSession();
+    let alive = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
       setToken(data.session?.access_token ?? null);
-    })();
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setToken(session?.access_token ?? null);
+    });
+
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
+  // close mobile menu on outside click
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!open) return;
@@ -71,8 +95,14 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
     }
   }
 
-  const btnClass = "rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition";
+  const btnClass =
+    "rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition";
   const btnStyle = { borderColor: "rgb(var(--border))" } as const;
+
+  const cartBtnClass =
+    "relative rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition";
+  const cartIconBtnClass =
+    "relative rounded-2xl border p-2 hover:opacity-90 transition";
 
   return (
     <header
@@ -96,7 +126,7 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
           </div>
         </a>
 
-        {/* Desktop actions */}
+        {/* Desktop */}
         <div className="hidden sm:flex items-center gap-3">
           <a className={btnClass} style={btnStyle} href={SITE.instagram} target="_blank" rel="noreferrer">
             Instagram
@@ -105,49 +135,37 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
             GoFood
           </a>
 
-          {/* ✅ Cart button */}
-          <button
-            onClick={openCart}
-            className="relative rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
-            style={{ borderColor: "rgb(var(--border))" }}
-          >
+          {/* Cart */}
+          <button onClick={openCart} className={cartBtnClass} style={btnStyle}>
             <span className="inline-flex items-center gap-2">
               <IconCart />
               Keranjang
             </span>
-
-            {cartCount > 0 && (
-              <span
-                className="absolute -right-2 -top-2 min-w-[20px] rounded-full px-1.5 py-0.5 text-[11px] font-bold text-center"
-                style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
-              >
-                {cartCount}
-              </span>
-            )}
+            <CartBadge count={cartCount} />
           </button>
 
-          {token && (
+          {/* Auth */}
+          {token ? (
             <button className={btnClass} style={btnStyle} onClick={logout}>
               Logout
             </button>
+          ) : (
+            <a className={btnClass} style={btnStyle} href="/login">
+              Login
+            </a>
           )}
 
           {!hideThemeToggle && <ThemeToggle />}
         </div>
 
-        {/* Mobile actions */}
+        {/* Mobile */}
         <div className="flex sm:hidden items-center gap-2">
-          {/* ✅ Cart icon (mobile) */}
-          <button
-            onClick={openCart}
-            className="relative rounded-2xl border p-2 hover:opacity-90 transition"
-            style={btnStyle}
-            aria-label="Open cart"
-          >
+          {/* Cart */}
+          <button onClick={openCart} className={cartIconBtnClass} style={btnStyle} aria-label="Open cart">
             <IconCart />
             {cartCount > 0 && (
               <span
-                className="absolute -right-2 -top-2 min-w-[18px] rounded-full px-1 py-0.5 text-[10px] font-bold text-center"
+                className="absolute -right-2 -top-2 min-w-[18px] rounded-full px-1 py-0.5 text-center text-[10px] font-bold"
                 style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
               >
                 {cartCount}
@@ -157,9 +175,10 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
 
           {!hideThemeToggle && <ThemeToggle />}
 
+          {/* Menu */}
           <div className="relative" ref={panelRef}>
             <button
-              className="rounded-2xl border p-2 hover:opacity-90 transition"
+              className={cartIconBtnClass}
               style={btnStyle}
               onClick={() => setOpen((v) => !v)}
               aria-label="Open menu"

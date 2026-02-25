@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import Navbar from "../components/Navbar";
+import { supabase } from "../../lib/supabaseClient";
+import Navbar from "../../components/Navbar";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
