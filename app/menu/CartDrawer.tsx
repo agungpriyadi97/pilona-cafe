@@ -1,124 +1,125 @@
 "use client";
 
-import { CartItem, rupiah } from "./cartTypes";
+import { useMemo } from "react";
+import { useOrder } from "../components/OrderProvider";
+
+function rupiah(n: number) {
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return "Rp " + v.toLocaleString("id-ID");
+}
 
 export default function CartDrawer({
   open,
   onClose,
-  items,
-  onInc,
-  onDec,
-  onRemove,
   onCheckout,
 }: {
   open: boolean;
   onClose: () => void;
-  items: CartItem[];
-  onInc: (key: string) => void;
-  onDec: (key: string) => void;
-  onRemove: (key: string) => void;
   onCheckout: () => void;
 }) {
+  const { cart, cartCount, cartTotal, incQty, decQty, removeItem } = useOrder();
+
+  const hasItems = cart.length > 0;
+
+  const title = useMemo(() => {
+    if (!hasItems) return "Keranjang kosong";
+    return `Keranjang (${cartCount})`;
+  }, [hasItems, cartCount]);
+
   if (!open) return null;
 
-  const total = items.reduce((s, it) => s + it.priceValue * it.qty, 0);
-  const count = items.reduce((s, it) => s + it.qty, 0);
-
   return (
-    <div className="fixed inset-0 z-[70]">
-      <button className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Close cart" />
+    <div className="fixed inset-0 z-[60]">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div
-        className="absolute right-0 top-0 h-full w-full max-w-md border-l p-5 shadow-xl"
-        style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--surface))", color: "rgb(var(--text))" }}
+        className="absolute right-0 top-0 h-full w-full max-w-md border-l shadow-xl"
+        style={{ background: "rgb(var(--surface))", borderColor: "rgb(var(--border))" }}
       >
-        <div className="flex items-center justify-between">
-          <div className="text-lg font-semibold">Keranjang ({count})</div>
+        <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: "rgb(var(--border))" }}>
+          <div className="font-semibold">{title}</div>
           <button
+            onClick={onClose}
             className="rounded-xl border px-3 py-2 text-sm font-semibold hover:opacity-90"
             style={{ borderColor: "rgb(var(--border))" }}
-            onClick={onClose}
           >
             Tutup
           </button>
         </div>
 
-        <div className="mt-4 space-y-3 overflow-auto pr-1" style={{ maxHeight: "72vh" }}>
-          {items.length === 0 ? (
-            <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: "rgb(var(--border))", color: "rgb(var(--muted))" }}>
-              Keranjang masih kosong.
+        <div className="p-5 space-y-4 overflow-auto" style={{ height: "calc(100% - 170px)" }}>
+          {!hasItems ? (
+            <div className="text-sm" style={{ color: "rgb(var(--muted))" }}>
+              Tambahkan menu dulu ya 🙂
             </div>
           ) : (
-            items.map((it) => (
-              <div key={it.key} className="rounded-2xl border p-4" style={{ borderColor: "rgb(var(--border))" }}>
+            cart.map((it) => (
+              <div
+                key={`${it.name}-${it.priceLabel}`}
+                className="rounded-2xl border p-4"
+                style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--bg))" }}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate font-semibold">{it.name}</div>
+                    <div className="font-semibold truncate">{it.name}</div>
+                    <div className="mt-1 text-xs" style={{ color: "rgb(var(--muted))" }}>
+                      {it.priceLabel} • {rupiah(it.priceValue)}
+                    </div>
                     {it.desc ? (
-                      <div className="mt-1 text-sm" style={{ color: "rgb(var(--muted))" }}>
+                      <div className="mt-1 text-xs" style={{ color: "rgb(var(--muted))" }}>
                         {it.desc}
                       </div>
                     ) : null}
-                    <div className="mt-1 text-sm" style={{ color: "rgb(var(--muted))" }}>
-                      {rupiah(it.priceValue)}
-                    </div>
                   </div>
 
                   <button
-                    className="rounded-xl border px-3 py-2 text-sm font-semibold hover:opacity-90"
+                    onClick={() => removeItem(it.name, it.priceLabel)}
+                    className="rounded-xl border px-3 py-2 text-xs font-semibold hover:opacity-90"
                     style={{ borderColor: "rgb(var(--border))" }}
-                    onClick={() => onRemove(it.key)}
                   >
                     Hapus
                   </button>
                 </div>
 
                 <div className="mt-3 flex items-center justify-between">
-                  <div className="text-sm" style={{ color: "rgb(var(--muted))" }}>
-                    Subtotal:{" "}
-                    <span className="font-semibold" style={{ color: "rgb(var(--text))" }}>
-                      {rupiah(it.priceValue * it.qty)}
-                    </span>
-                  </div>
-
                   <div className="flex items-center gap-2">
                     <button
-                      className="h-9 w-9 rounded-xl border text-lg font-semibold hover:opacity-90"
+                      onClick={() => decQty(it.name, it.priceLabel)}
+                      className="rounded-xl border px-3 py-2 text-sm font-semibold hover:opacity-90"
                       style={{ borderColor: "rgb(var(--border))" }}
-                      onClick={() => onDec(it.key)}
                     >
-                      -
+                      −
                     </button>
                     <div className="w-8 text-center font-semibold">{it.qty}</div>
                     <button
-                      className="h-9 w-9 rounded-xl border text-lg font-semibold hover:opacity-90"
+                      onClick={() => incQty(it.name, it.priceLabel)}
+                      className="rounded-xl border px-3 py-2 text-sm font-semibold hover:opacity-90"
                       style={{ borderColor: "rgb(var(--border))" }}
-                      onClick={() => onInc(it.key)}
                     >
                       +
                     </button>
                   </div>
+
+                  <div className="text-sm font-semibold">{rupiah(it.qty * it.priceValue)}</div>
                 </div>
               </div>
             ))
           )}
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 border-t p-5" style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--surface))" }}>
-          <div className="flex items-center justify-between">
-            <div className="text-sm" style={{ color: "rgb(var(--muted))" }}>
-              Total
-            </div>
-            <div className="text-lg font-bold">{rupiah(total)}</div>
+        <div className="p-5 border-t" style={{ borderColor: "rgb(var(--border))" }}>
+          <div className="flex items-center justify-between text-sm">
+            <div style={{ color: "rgb(var(--muted))" }}>Total</div>
+            <div className="font-semibold">{rupiah(cartTotal)}</div>
           </div>
 
           <button
-            disabled={items.length === 0}
+            disabled={!hasItems}
             onClick={onCheckout}
-            className="mt-4 w-full rounded-2xl px-5 py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+            className="mt-4 w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-50 hover:opacity-90"
             style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
           >
-            Lanjutkan
+            Checkout
           </button>
         </div>
       </div>

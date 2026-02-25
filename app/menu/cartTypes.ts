@@ -1,13 +1,15 @@
+export type OrderType = "DINE_IN" | "TAKE_AWAY";
+
 export type CartItem = {
-  key: string;
   name: string;
   desc?: string;
-  priceValue: number;
-  priceLabel: string;
   qty: number;
+  priceValue: number;  // rupiah
+  priceLabel: string;  // "R" | "L" | "XL" | "1L" | "Single"
 };
 
-export function rupiah(n: number) {
-  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
-  return "Rp " + v.toLocaleString("id-ID");
-}
+export type CheckoutPayload = {
+  customerName: string;
+  customerPhone: string;
+  orderType: OrderType;
+};
