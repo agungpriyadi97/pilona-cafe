@@ -4,6 +4,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import { SITE } from "../data/site";
 import { supabase } from "../lib/supabaseClient";
 import { useEffect, useRef, useState } from "react";
+import { useOrder } from "./OrderProvider"; // ✅ tambah ini
 
 function IconMenu() {
   return (
@@ -13,10 +14,29 @@ function IconMenu() {
   );
 }
 
+function IconCart() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 6h15l-1.5 8.5a2 2 0 0 1-2 1.7H9a2 2 0 0 1-2-1.6L5 3H2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9 22a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" fill="currentColor" />
+      <path d="M18 22a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: boolean }) {
   const [token, setToken] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ cart
+  const { cartCount, openCart } = useOrder();
 
   useEffect(() => {
     (async () => {
@@ -85,6 +105,27 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
             GoFood
           </a>
 
+          {/* ✅ Cart button */}
+          <button
+            onClick={openCart}
+            className="relative rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
+            style={{ borderColor: "rgb(var(--border))" }}
+          >
+            <span className="inline-flex items-center gap-2">
+              <IconCart />
+              Keranjang
+            </span>
+
+            {cartCount > 0 && (
+              <span
+                className="absolute -right-2 -top-2 min-w-[20px] rounded-full px-1.5 py-0.5 text-[11px] font-bold text-center"
+                style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
+              >
+                {cartCount}
+              </span>
+            )}
+          </button>
+
           {token && (
             <button className={btnClass} style={btnStyle} onClick={logout}>
               Logout
@@ -96,6 +137,24 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
 
         {/* Mobile actions */}
         <div className="flex sm:hidden items-center gap-2">
+          {/* ✅ Cart icon (mobile) */}
+          <button
+            onClick={openCart}
+            className="relative rounded-2xl border p-2 hover:opacity-90 transition"
+            style={btnStyle}
+            aria-label="Open cart"
+          >
+            <IconCart />
+            {cartCount > 0 && (
+              <span
+                className="absolute -right-2 -top-2 min-w-[18px] rounded-full px-1 py-0.5 text-[10px] font-bold text-center"
+                style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
+              >
+                {cartCount}
+              </span>
+            )}
+          </button>
+
           {!hideThemeToggle && <ThemeToggle />}
 
           <div className="relative" ref={panelRef}>
