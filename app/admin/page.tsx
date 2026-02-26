@@ -19,7 +19,8 @@ function pct(part: number, total: number) {
   return Math.round((part / total) * 100);
 }
 
-const medal = (i: number) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`);
+const medal = (i: number) =>
+  i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
 
 /* =========================
    Types
@@ -31,9 +32,11 @@ type Summary = {
   topMenu: Array<{ name: string; count: number }>;
   peakHours: Array<{ hour: string; count: number }>;
   typeDist: { dineIn: number; takeAway: number };
-  dailyRevenue: number; // ✅ baru
-  monthlyRevenue: number; // ✅ baru
-  yearlyRevenue: number;  // ✅ baru
+
+  // ✅ tambahan
+  dailyRevenue: number;
+  monthlyRevenue: number;
+  yearlyRevenue: number;
 };
 
 type SummaryOrError = Summary | { error: string };
@@ -61,12 +64,14 @@ export default function AdminPage() {
   );
 
   const dinePct = useMemo(() => pct(dineIn, totalOrders), [dineIn, totalOrders]);
-  const takePct = useMemo(() => pct(takeAway, totalOrders), [takeAway, totalOrders]);
+  const takePct = useMemo(
+    () => pct(takeAway, totalOrders),
+    [takeAway, totalOrders]
+  );
 
   async function downloadFile(kind: "csv" | "xlsx") {
     const { data: sess } = await supabase.auth.getSession();
     const token = sess.session?.access_token;
-
     if (!token) return alert("Silakan login dulu.");
 
     const url = kind === "csv" ? "/api/admin/export.csv" : "/api/admin/export.xlsx";
@@ -92,8 +97,9 @@ export default function AdminPage() {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
 
+      // kalau belum login, AuthGate yang redirect
       if (!token) {
-        setLoading(false); // AuthGate yang handle redirect
+        setLoading(false);
         return;
       }
 
@@ -110,12 +116,12 @@ export default function AdminPage() {
 
   return (
     <AuthGate allow={["admin"]} nextPath="/admin">
-      {/* ✅ Kunci theme ke LIGHT di halaman admin */}
+      {/* ✅ kunci theme admin */}
       <ThemeLock mode="light" />
 
       <main className="min-h-screen">
-        {/* ✅ Navbar global, tapi hide toggle theme */}
-        <Navbar hideThemeToggle />
+        {/* ✅ STAFF navbar: tidak ada login/keranjang customer */}
+        <Navbar variant="staff" hideThemeToggle />
 
         <div className="mx-auto max-w-6xl px-5 py-8">
           {/* Action bar */}
@@ -158,7 +164,9 @@ export default function AdminPage() {
           </div>
 
           <h1 className="mt-6 text-2xl font-semibold">Ringkasan</h1>
-          <p className="mt-1 text-sm text-neutral-500">Summary • Top 5 • Jam Ramai • Distribusi Tipe</p>
+          <p className="mt-1 text-sm text-neutral-500">
+            Summary • Top 5 • Jam Ramai • Distribusi Tipe
+          </p>
 
           {loading ? (
             <div className="mt-8 text-sm text-neutral-500">Loading...</div>
@@ -168,61 +176,87 @@ export default function AdminPage() {
             <div className="mt-8 rounded-2xl border p-6 text-sm text-red-600">
               Error: {(data as any).error}
               <div className="mt-2 text-neutral-600">
-                Pastikan user kamu punya role <b>admin</b> di tabel <b>profiles</b>.
+                Pastikan user punya role <b>admin</b> di tabel <b>profiles</b>.
               </div>
             </div>
           ) : (
             <>
-              {/* Summary */}
+              {/* Summary Cards (6) */}
               <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <SummaryCard title="Total Pesanan" value={String((data as Summary).totalOrders)} />
-                <SummaryCard title="Total Pendapatan" value={rupiah((data as Summary).totalRevenue)} />
-                <SummaryCard title="Rata-rata / pesanan" value={rupiah((data as Summary).avgOrder)} />
-                <SummaryCard title="Pendapatan Harian" value={rupiah((data as Summary).dailyRevenue)} /> {/* ✅ */}
-                <SummaryCard title="Pendapatan Bulanan" value={rupiah((data as Summary).monthlyRevenue)} /> {/* ✅ */}
-                <SummaryCard title="Pendapatan Tahunan" value={rupiah((data as Summary).yearlyRevenue)} />   {/* ✅ */}
-            </div>
-
-          {/* Top 5 + Peak hours */}
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <Panel title="🏆 Menu Terlaris (Top 5)" subtitle="Menu paling banyak dipesan">
-              <div className="space-y-2">
-                {((data as Summary).topMenu ?? []).slice(0, 5).map((x, i) => (
-                  <Row key={x.name} left={`${medal(i)} ${x.name}`} right={`${x.count} pesanan`} />
-                ))}
-                {((data as Summary).topMenu ?? []).length === 0 && (
-                  <div className="text-sm text-neutral-500">Belum ada data.</div>
-                )}
+                <SummaryCard
+                  title="Total Pesanan"
+                  value={String((data as Summary).totalOrders)}
+                />
+                <SummaryCard
+                  title="Total Pendapatan"
+                  value={rupiah((data as Summary).totalRevenue)}
+                />
+                <SummaryCard
+                  title="Rata-rata / pesanan"
+                  value={rupiah((data as Summary).avgOrder)}
+                />
+                <SummaryCard
+                  title="Pendapatan Harian"
+                  value={rupiah((data as Summary).dailyRevenue)}
+                />
+                <SummaryCard
+                  title="Pendapatan Bulanan"
+                  value={rupiah((data as Summary).monthlyRevenue)}
+                />
+                <SummaryCard
+                  title="Pendapatan Tahunan"
+                  value={rupiah((data as Summary).yearlyRevenue)}
+                />
               </div>
-            </Panel>
 
-            <Panel title="⏰ Jam Ramai" subtitle="Jam dengan pesanan terbanyak">
-              <div className="space-y-2">
-                {((data as Summary).peakHours ?? []).slice(0, 3).map((x, i) => (
-                  <Row key={x.hour} left={`📈 #${i + 1}: ${x.hour}`} right={`${x.count} pesanan`} />
-                ))}
-                {((data as Summary).peakHours ?? []).length === 0 && (
-                  <div className="text-sm text-neutral-500">Belum ada data.</div>
-                )}
+              {/* Top 5 + Peak hours */}
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <Panel title="🏆 Menu Terlaris (Top 5)" subtitle="Menu paling banyak dipesan">
+                  <div className="space-y-2">
+                    {((data as Summary).topMenu ?? []).slice(0, 5).map((x, i) => (
+                      <Row
+                        key={x.name}
+                        left={`${medal(i)} ${x.name}`}
+                        right={`${x.count} pesanan`}
+                      />
+                    ))}
+                    {((data as Summary).topMenu ?? []).length === 0 && (
+                      <div className="text-sm text-neutral-500">Belum ada data.</div>
+                    )}
+                  </div>
+                </Panel>
+
+                <Panel title="⏰ Jam Ramai" subtitle="Jam dengan pesanan terbanyak">
+                  <div className="space-y-2">
+                    {((data as Summary).peakHours ?? []).slice(0, 3).map((x, i) => (
+                      <Row
+                        key={x.hour}
+                        left={`📈 #${i + 1}: ${x.hour}`}
+                        right={`${x.count} pesanan`}
+                      />
+                    ))}
+                    {((data as Summary).peakHours ?? []).length === 0 && (
+                      <div className="text-sm text-neutral-500">Belum ada data.</div>
+                    )}
+                  </div>
+                </Panel>
               </div>
-            </Panel>
-          </div>
 
-          {/* Type dist */}
-          <div className="mt-6 rounded-2xl border bg-white p-6">
-            <div className="font-semibold">☕ Distribusi Tipe</div>
-            <div className="mt-1 text-sm text-neutral-500">Dine-in vs Take Away</div>
+              {/* Type dist */}
+              <div className="mt-6 rounded-2xl border bg-white p-6">
+                <div className="font-semibold">☕ Distribusi Tipe</div>
+                <div className="mt-1 text-sm text-neutral-500">Dine-in vs Take Away</div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <TypeBox icon="☕" title="Dine-in" value={`${dineIn} (${dinePct}%)`} />
-              <TypeBox icon="🛍️" title="Take Away" value={`${takeAway} (${takePct}%)`} />
-            </div>
-          </div>
-        </>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <TypeBox icon="☕" title="Dine-in" value={`${dineIn} (${dinePct}%)`} />
+                  <TypeBox icon="🛍️" title="Take Away" value={`${takeAway} (${takePct}%)`} />
+                </div>
+              </div>
+            </>
           )}
-      </div>
-    </main>
-    </AuthGate >
+        </div>
+      </main>
+    </AuthGate>
   );
 }
 

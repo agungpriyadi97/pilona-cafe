@@ -4,9 +4,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import { SITE } from "../data/site";
 import { supabase } from "../lib/supabaseClient";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useOrder } from "./OrderProvider";
-
-type Role = "admin" | "cashier" | null;
+import { useOrder } from "../components/OrderProvider";
 
 function IconMenu() {
   return (
@@ -15,6 +13,7 @@ function IconMenu() {
     </svg>
   );
 }
+
 function IconCart() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -31,48 +30,46 @@ function IconCart() {
   );
 }
 
-export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: boolean }) {
+type NavbarVariant = "customer" | "staff";
+
+export default function Navbar({
+  hideThemeToggle = false,
+  variant = "customer",
+}: {
+  hideThemeToggle?: boolean;
+  variant?: NavbarVariant;
+}) {
+  const isCustomer = variant === "customer";
+
   const [token, setToken] = useState<string | null>(null);
-  const [role, setRole] = useState<Role>(null);
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
+  // cart hanya untuk customer (OrderProvider wajib ada di layout)
   const { cartCount, openCart } = useOrder();
 
-  async function syncSessionAndRole(accessToken: string | null) {
-    setToken(accessToken);
-    if (!accessToken) {
-      setRole(null);
-      return;
-    }
+  // ✅ hydration-safe login link
+  const [loginHref, setLoginHref] = useState("/login");
+  useEffect(() => {
+    if (!isCustomer) return;
+    setLoginHref(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+  }, [isCustomer]);
 
-    // ambil role dari /api/me
-    const res = await fetch("/api/me", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!res.ok) {
-      setRole(null);
-      return;
-    }
-
-    const json = await res.json().catch(() => null);
-    setRole((json?.role ?? null) as Role);
-  }
-
+  // session token
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
-      await syncSessionAndRole(data.session?.access_token ?? null);
+      setToken(data.session?.access_token ?? null);
     })();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
-      await syncSessionAndRole(session?.access_token ?? null);
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setToken(session?.access_token ?? null);
     });
 
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // click outside mobile panel
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!open) return;
@@ -85,38 +82,37 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
   }, [open]);
 
   async function logout() {
-    try {
-      if (token) {
-        await fetch("/api/audit/event", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ action: "LOGOUT" }),
-        });
-      }
-    } finally {
-      await supabase.auth.signOut();
-      location.href = "/";
-    }
+    // logout hanya untuk customer navbar (staff logout via tombol "Keluar" di halaman)
+    await supabase.auth.signOut();
+    location.href = "/";
   }
 
   const btnClass = "rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition";
   const btnStyle = { borderColor: "rgb(var(--border))" } as const;
 
-  const dashboardHref = useMemo(() => {
-    return (path: "/kasir" | "/admin") => {
-      if (!token) return `/login?next=${encodeURIComponent(path)}`;
+  const showThemeToggle = isCustomer && !hideThemeToggle;
+  const showCustomerActions = isCustomer;
 
-      // role check
-      if (path === "/admin" && role !== "admin") {
-        return `/login?next=${encodeURIComponent(path)}&denied=1`;
-      }
-      if (path === "/kasir" && role !== "admin" && role !== "cashier") {
-        return `/login?next=${encodeURIComponent(path)}&denied=1`;
-      }
-
-      return path;
-    };
-  }, [token, role]);
+  const CartButton = (
+    <button
+      onClick={openCart}
+      className="relative rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
+      style={btnStyle}
+    >
+      <span className="inline-flex items-center gap-2">
+        <IconCart />
+        Keranjang
+      </span>
+      {cartCount > 0 && (
+        <span
+          className="absolute -right-2 -top-2 min-w-[20px] rounded-full px-1.5 py-0.5 text-[11px] font-bold text-center"
+          style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
+        >
+          {cartCount}
+        </span>
+      )}
+    </button>
+  );
 
   return (
     <header
@@ -149,67 +145,49 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
             GoFood
           </a>
 
-          {/* Cart */}
-          <button
-            onClick={openCart}
-            className="relative rounded-2xl border px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
-            style={btnStyle}
-          >
-            <span className="inline-flex items-center gap-2">
-              <IconCart />
-              Keranjang
-            </span>
-            {cartCount > 0 && (
-              <span
-                className="absolute -right-2 -top-2 min-w-[20px] rounded-full px-1.5 py-0.5 text-[11px] font-bold text-center"
-                style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
-              >
-                {cartCount}
-              </span>
-            )}
-          </button>
+          {showCustomerActions && (
+            <>
+              {CartButton}
 
-          {/* Dashboard links (role-aware) */}
-          <a className={btnClass} style={btnStyle} href={dashboardHref("/kasir")}>
-            Dashboard Kasir
-          </a>
-          <a className={btnClass} style={btnStyle} href={dashboardHref("/admin")}>
-            Dashboard Admin
-          </a>
+              {token ? (
+                <button className={btnClass} style={btnStyle} onClick={logout}>
+                  Logout
+                </button>
+              ) : (
+                <a className={btnClass} style={btnStyle} href={loginHref}>
+                  Login
+                </a>
+              )}
 
-          {token ? (
-            <button className={btnClass} style={btnStyle} onClick={logout}>
-              Logout
-            </button>
-          ) : (
-            <a className={btnClass} style={btnStyle} href="/login">
-              Login
-            </a>
+              {showThemeToggle && <ThemeToggle />}
+            </>
           )}
-
-          {!hideThemeToggle && <ThemeToggle />}
         </div>
 
         {/* Mobile */}
         <div className="flex sm:hidden items-center gap-2">
-          <button
-            onClick={openCart}
-            className="relative rounded-2xl border p-2 hover:opacity-90 transition"
-            style={btnStyle}
-            aria-label="Open cart"
-          >
-            <IconCart />
-            {cartCount > 0 && (
-              <span
-                className="absolute -right-2 -top-2 min-w-[18px] rounded-full px-1 py-0.5 text-[10px] font-bold text-center"
-                style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
+          {showCustomerActions && (
+            <>
+              <button
+                onClick={openCart}
+                className="relative rounded-2xl border p-2 hover:opacity-90 transition"
+                style={btnStyle}
+                aria-label="Open cart"
               >
-                {cartCount}
-              </span>
-            )}
-          </button>
+                <IconCart />
+                {cartCount > 0 && (
+                  <span
+                    className="absolute -right-2 -top-2 min-w-[18px] rounded-full px-1 py-0.5 text-[10px] font-bold text-center"
+                    style={{ background: "rgb(var(--brand))", color: "rgb(var(--brandText))" }}
+                  >
+                    {cartCount}
+                  </span>
+                )}
+              </button>
 
-          {!hideThemeToggle && <ThemeToggle />}
+              {showThemeToggle && <ThemeToggle />}
+            </>
+          )}
 
           <div className="relative" ref={panelRef}>
             <button
@@ -235,6 +213,7 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
                 >
                   Instagram
                 </a>
+
                 <a
                   className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
                   href={SITE.gofood}
@@ -245,40 +224,30 @@ export default function Navbar({ hideThemeToggle = false }: { hideThemeToggle?: 
                   GoFood
                 </a>
 
-                <div className="my-2 h-px" style={{ background: "rgb(var(--border))" }} />
+                {showCustomerActions && (
+                  <>
+                    <div className="my-2 h-px" style={{ background: "rgb(var(--border))" }} />
 
-                <a
-                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
-                  href={dashboardHref("/kasir")}
-                  onClick={() => setOpen(false)}
-                >
-                  Dashboard Kasir
-                </a>
-                <a
-                  className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
-                  href={dashboardHref("/admin")}
-                  onClick={() => setOpen(false)}
-                >
-                  Dashboard Admin
-                </a>
-
-                <div className="my-2 h-px" style={{ background: "rgb(var(--border))" }} />
-
-                {token ? (
-                  <button
-                    className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold hover:opacity-90"
-                    onClick={logout}
-                  >
-                    Logout
-                  </button>
-                ) : (
-                  <a
-                    className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
-                    href="/login"
-                    onClick={() => setOpen(false)}
-                  >
-                    Login
-                  </a>
+                    {token ? (
+                      <button
+                        className="w-full rounded-xl px-3 py-2 text-left text-sm font-semibold hover:opacity-90"
+                        onClick={() => {
+                          setOpen(false);
+                          logout();
+                        }}
+                      >
+                        Logout
+                      </button>
+                    ) : (
+                      <a
+                        className="block rounded-xl px-3 py-2 text-sm font-semibold hover:opacity-90"
+                        href={loginHref}
+                        onClick={() => setOpen(false)}
+                      >
+                        Login
+                      </a>
+                    )}
+                  </>
                 )}
               </div>
             )}

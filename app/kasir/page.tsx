@@ -410,7 +410,7 @@ export default function KasirPage() {
     <AuthGate allow={["admin", "cashier"]} nextPath="/kasir">
       <ThemeLock mode="light" />
       <main className="min-h-screen">
-        <Navbar hideThemeToggle />
+        <Navbar variant="staff" hideThemeToggle />
 
         <div className="mx-auto max-w-6xl px-5 py-6">
           {/* Action bar */}

@@ -30,7 +30,7 @@ export default function MenuPage() {
 
   return (
     <main className="min-h-screen">
-      <Navbar />
+      <Navbar variant="customer"/>
 
       <div className="mx-auto max-w-6xl px-5 py-12">
         <h1 className="text-3xl font-semibold">Menu</h1>

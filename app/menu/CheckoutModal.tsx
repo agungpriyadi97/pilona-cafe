@@ -1,12 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { CartItem, CheckoutPayload, OrderType } from "./cartTypes";
-import { supabase } from "../lib/supabaseClient"; // ✅ tambah ini (ambil token dari session)
+import type { CartItem, OrderType } from "./cartTypes";
+import { supabase } from "../lib/supabaseClient";
 
 function rupiah(n: number) {
   const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
   return "Rp " + v.toLocaleString("id-ID");
+}
+
+function onlyDigits(s: string) {
+  return (s || "").replace(/[^\d]/g, "");
 }
 
 export default function CheckoutModal({
@@ -28,7 +32,7 @@ export default function CheckoutModal({
   const [loading, setLoading] = useState(false);
 
   const canSubmit = useMemo(() => {
-    const p = phone.replace(/\D/g, "");
+    const p = onlyDigits(phone);
     return cart.length > 0 && name.trim().length >= 2 && p.length >= 9 && !loading;
   }, [cart.length, name, phone, loading]);
 
@@ -39,49 +43,39 @@ export default function CheckoutModal({
     setLoading(true);
 
     try {
-      // ✅ WAJIB LOGIN: ambil session + token
+      // ✅ WAJIB LOGIN
       const { data: sess, error: sessErr } = await supabase.auth.getSession();
       if (sessErr) throw sessErr;
 
       const token = sess.session?.access_token;
       if (!token) {
         alert("Silakan login dulu untuk pesan 🙂");
-        // ganti next kalau kamu mau balik ke halaman tertentu
-        location.href = "/login?next=/menu";
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        location.href = `/login?next=${next}`;
         return;
       }
 
-      const payload: CheckoutPayload = {
-        customerName: name.trim(),
-        customerPhone: phone.trim(),
-        orderType,
-      };
-
-      const body = {
-        ...payload,
-        items: cart.map((c) => ({
-          name: c.name,
-          priceLabel: c.priceLabel ?? undefined, // ✅ jangan null
-          priceValue: c.priceValue ?? undefined,
-          qty: c.qty,
-        })),
-      };
-
-      // ✅ KIRIM KE API (server yang insert ke DB pakai service role)
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          customerName: name.trim(),
+          customerPhone: onlyDigits(phone),
+          orderType,
+          items: cart.map((c) => ({
+            name: c.name,
+            priceLabel: c.priceLabel ?? null,
+            priceValue: Number(c.priceValue ?? 0),
+            qty: Number(c.qty ?? 1),
+          })),
+        }),
       });
 
       const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(json?.error ?? "Gagal kirim pesanan");
-      }
+      if (!res.ok) throw new Error(json?.error ?? "Gagal kirim pesanan");
 
       alert("Pesanan terkirim ✅");
       onSuccess();
@@ -94,7 +88,7 @@ export default function CheckoutModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <button type="button" aria-label="Close backdrop" className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div
         className="relative w-full max-w-lg rounded-3xl border p-6 shadow-xl"
@@ -117,6 +111,7 @@ export default function CheckoutModal({
           </button>
         </div>
 
+        {/* Ringkasan */}
         <div
           className="mt-5 rounded-2xl border p-4"
           style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--bg))" }}
@@ -125,13 +120,14 @@ export default function CheckoutModal({
 
           <div className="mt-2 space-y-1 text-sm" style={{ color: "rgb(var(--muted))" }}>
             {cart.slice(0, 6).map((c) => (
-              <div key={`${c.name}-${c.priceLabel}`} className="flex justify-between gap-3">
+              <div key={`${c.name}-${c.priceLabel ?? "x"}`} className="flex justify-between gap-3">
                 <div className="truncate">
-                  {c.qty}x {c.name} ({c.priceLabel})
+                  {c.qty}x {c.name} ({c.priceLabel ?? "Default"})
                 </div>
-                <div className="shrink-0">{rupiah(c.qty * c.priceValue)}</div>
+                <div className="shrink-0">{rupiah(Number(c.qty ?? 1) * Number(c.priceValue ?? 0))}</div>
               </div>
             ))}
+
             {cart.length > 6 ? (
               <div className="text-xs" style={{ color: "rgb(var(--muted))" }}>
                 + {cart.length - 6} item lainnya
@@ -145,6 +141,7 @@ export default function CheckoutModal({
           </div>
         </div>
 
+        {/* Form */}
         <div className="mt-5 space-y-4">
           <div>
             <div className="text-sm font-semibold">Nama Lengkap</div>
@@ -163,6 +160,7 @@ export default function CheckoutModal({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="Contoh: 08123456789"
+              inputMode="numeric"
               className="mt-2 w-full rounded-2xl border px-4 py-3 text-sm outline-none"
               style={{ borderColor: "rgb(var(--border))", background: "rgb(var(--bg))" }}
             />
@@ -175,6 +173,7 @@ export default function CheckoutModal({
             <div className="text-sm font-semibold">Jenis Pesanan</div>
             <div className="mt-2 grid grid-cols-2 gap-3">
               <button
+                type="button"
                 onClick={() => setOrderType("DINE_IN")}
                 className="rounded-2xl border p-4 text-left hover:opacity-90"
                 style={{
@@ -189,6 +188,7 @@ export default function CheckoutModal({
               </button>
 
               <button
+                type="button"
                 onClick={() => setOrderType("TAKE_AWAY")}
                 className="rounded-2xl border p-4 text-left hover:opacity-90"
                 style={{
