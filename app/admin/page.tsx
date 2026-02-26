@@ -69,6 +69,11 @@ export default function AdminPage() {
     [takeAway, totalOrders]
   );
 
+    async function logout() {
+    await supabase.auth.signOut();
+    location.href = "/";
+  }
+
   async function downloadFile(kind: "csv" | "xlsx") {
     const { data: sess } = await supabase.auth.getSession();
     const token = sess.session?.access_token;
@@ -161,6 +166,14 @@ export default function AdminPage() {
             >
               Dashboard Kasir
             </a>
+              <button
+              onClick={logout}
+              rel="noreferrer"
+              className="rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+              style={{ borderColor: "rgb(var(--border))" }}
+            >
+              Keluar
+            </button>
           </div>
 
           <h1 className="mt-6 text-2xl font-semibold">Ringkasan</h1>
